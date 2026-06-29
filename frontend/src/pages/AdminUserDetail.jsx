@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import api from '../services/api';
+import adminApi from '../services/adminApi';
 
 const scoreColor = (s) => s >= 75 ? 'bg-green-100 text-green-700' : s >= 50 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500';
 
@@ -20,7 +20,7 @@ const AdminUserDetail = () => {
   const [activeTab, setActiveTab] = useState('profile'); // profile | jobs | api
 
   useEffect(() => {
-    api.get(`/admin/users/${id}`)
+    adminApi.get(`/admin/users/${id}`)
       .then((r) => setDetail(r.data))
       .finally(() => setLoading(false));
   }, [id]);
@@ -29,7 +29,7 @@ const AdminUserDetail = () => {
     setRunning(true);
     setActiveTab('api');
     try {
-      const res = await api.post(`/admin/users/${id}/run-api`);
+      const res = await adminApi.post(`/admin/users/${id}/run-api`);
       setApiResult(res.data);
     } catch (err) {
       setApiResult({ error: err.response?.data?.message || 'Failed' });

@@ -1,31 +1,97 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import api from '../services/api';
+import adminApi from '../services/adminApi';
 
-const AdminUsers = () => {
+// ── Token gate ────────────────────────────────────────────────────
+const TokenGate = ({ onSuccess }) => {
+  const [token, setToken] = useState('');
+  const [show, setShow] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      localStorage.setItem('adminToken', token);
+      await adminApi.get('/admin/users'); // verify the token works
+      onSuccess();
+    } catch {
+      localStorage.removeItem('adminToken');
+      setError('Invalid token. Try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
+        <div className="mb-6 text-center">
+          <div className="text-3xl mb-3">🔐</div>
+          <h1 className="text-xl font-bold text-gray-900">Admin Access</h1>
+          <p className="text-sm text-gray-500 mt-1">Enter your admin token to continue</p>
+        </div>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="relative">
+            <input
+              type={show ? 'text' : 'password'}
+              required
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 pr-16 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono"
+              placeholder="Admin token"
+            />
+            <button
+              type="button"
+              onClick={() => setShow((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 hover:text-gray-600"
+            >
+              {show ? 'Hide' : 'Show'}
+            </button>
+          </div>
+          {error && <p className="text-sm text-red-500">{error}</p>}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-blue-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-60"
+          >
+            {loading ? 'Verifying...' : 'Enter admin panel'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// ── Users list ────────────────────────────────────────────────────
+const UsersList = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
-  const { logout } = useAuth();
 
   useEffect(() => {
-    api.get('/admin/users')
+    adminApi.get('/admin/users')
       .then((r) => setUsers(r.data))
       .finally(() => setLoading(false));
   }, []);
 
-  const handleLogout = () => { logout(); navigate('/login'); };
+  const handleLogout = () => {
+    localStorage.removeItem('adminToken');
+    window.location.reload();
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Top bar */}
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
         <div>
           <span className="text-xl font-bold text-blue-600">JobFind</span>
           <span className="ml-3 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">Admin</span>
         </div>
-        <button onClick={handleLogout} className="text-sm text-red-500 hover:text-red-700">Logout</button>
+        <button onClick={handleLogout} className="text-sm text-red-500 hover:text-red-700">
+          Exit admin
+        </button>
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-8">
@@ -37,12 +103,12 @@ const AdminUsers = () => {
         {loading ? (
           <div className="text-center text-gray-400 py-20">Loading...</div>
         ) : (
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   {['Email', 'Name', 'Skills', 'Exp', 'Location', 'Status', 'Jobs Matched', 'Top Score', 'Joined', ''].map((h) => (
-                    <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                    <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
                       {h}
                     </th>
                   ))}
@@ -51,47 +117,42 @@ const AdminUsers = () => {
               <tbody className="divide-y divide-gray-100">
                 {users.map((u) => (
                   <tr key={u._id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 font-medium text-gray-900">
-                      {u.email}
-                      {u.isAdmin && <span className="ml-1 text-xs bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded">admin</span>}
-                    </td>
-                    <td className="px-4 py-3 text-gray-600">{u.name || '—'}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">{u.email}</td>
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{u.name || '—'}</td>
                     <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-1 max-w-xs">
+                      <div className="flex flex-wrap gap-1 max-w-[180px]">
                         {u.skills?.slice(0, 3).map((s) => (
-                          <span key={s} className="bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">{s}</span>
+                          <span key={s} className="bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full whitespace-nowrap">{s}</span>
                         ))}
-                        {u.skills?.length > 3 && (
-                          <span className="text-xs text-gray-400">+{u.skills.length - 3}</span>
-                        )}
+                        {u.skills?.length > 3 && <span className="text-xs text-gray-400">+{u.skills.length - 3}</span>}
                         {!u.skills?.length && <span className="text-gray-400 text-xs">—</span>}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-600">{u.experience != null ? `${u.experience}y` : '—'}</td>
-                    <td className="px-4 py-3 text-gray-600 text-xs">{u.locations?.join(', ') || '—'}</td>
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{u.experience != null ? `${u.experience}y` : '—'}</td>
+                    <td className="px-4 py-3 text-gray-600 text-xs whitespace-nowrap">{u.locations?.join(', ') || '—'}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
-                        <span className={`text-xs px-2 py-0.5 rounded-full w-fit ${u.isEmailVerified ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
+                        <span className={`text-xs px-2 py-0.5 rounded-full w-fit whitespace-nowrap ${u.isEmailVerified ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>
                           {u.isEmailVerified ? 'Verified' : 'Unverified'}
                         </span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full w-fit ${u.isOnboarded ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                        <span className={`text-xs px-2 py-0.5 rounded-full w-fit whitespace-nowrap ${u.isOnboarded ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
                           {u.isOnboarded ? 'Onboarded' : 'Pending'}
                         </span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-gray-600 font-medium">{u.jobsMatched}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 text-gray-600 font-medium text-center">{u.jobsMatched}</td>
+                    <td className="px-4 py-3 text-center">
                       <span className={`text-xs font-bold px-2 py-1 rounded-full ${u.topScore >= 75 ? 'bg-green-100 text-green-700' : u.topScore >= 50 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500'}`}>
                         {u.topScore}%
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-gray-400 text-xs">
+                    <td className="px-4 py-3 text-gray-400 text-xs whitespace-nowrap">
                       {new Date(u.createdAt).toLocaleDateString()}
                     </td>
                     <td className="px-4 py-3">
                       <button
                         onClick={() => navigate(`/admin/users/${u._id}`)}
-                        className="text-blue-600 hover:text-blue-800 text-xs font-medium"
+                        className="text-blue-600 hover:text-blue-800 text-xs font-medium whitespace-nowrap"
                       >
                         View →
                       </button>
@@ -105,6 +166,12 @@ const AdminUsers = () => {
       </div>
     </div>
   );
+};
+
+// ── Root component with token gate ────────────────────────────────
+const AdminUsers = () => {
+  const [authed, setAuthed] = useState(!!localStorage.getItem('adminToken'));
+  return authed ? <UsersList /> : <TokenGate onSuccess={() => setAuthed(true)} />;
 };
 
 export default AdminUsers;

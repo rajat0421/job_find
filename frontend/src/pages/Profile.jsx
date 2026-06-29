@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import api from '../services/api';
+import SkillTagInput from '../components/SkillTagInput';
 
 const REMOTE_OPTIONS = [
   { value: 'any', label: 'Any' },
@@ -122,7 +123,7 @@ const Profile = () => {
               />
             </div>
 
-            <TagInput label="Skills" placeholder="e.g. Node.js" tags={form.skills} onChange={skills => setForm({ ...form, skills })} />
+            <SkillTagInput label="Skills" tags={form.skills} onChange={skills => setForm({ ...form, skills })} />
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Years of experience</label>

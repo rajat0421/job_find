@@ -28,6 +28,18 @@ const VerifyEmail = () => {
     }
   };
 
+  const handlePaste = (e) => {
+    e.preventDefault();
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (!pasted) return;
+    const next = [...digits];
+    pasted.split('').forEach((char, i) => { next[i] = char; });
+    setDigits(next);
+    // Focus the box after the last pasted digit
+    const focusIndex = Math.min(pasted.length, 5);
+    refs.current[focusIndex]?.focus();
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     const otp = digits.join('');
@@ -76,6 +88,7 @@ const VerifyEmail = () => {
                 value={d}
                 onChange={(e) => handleChange(i, e.target.value)}
                 onKeyDown={(e) => handleKeyDown(i, e)}
+                onPaste={handlePaste}
                 className="w-11 h-12 text-center text-xl font-semibold border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             ))}

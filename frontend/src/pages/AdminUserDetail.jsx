@@ -104,7 +104,7 @@ const AdminUserDetail = () => {
               <Field label="Email" value={user.email} />
               <Field label="Name" value={user.name || '—'} />
               <Field label="Experience" value={user.experience != null ? `${user.experience} years` : '—'} />
-              <Field label="Salary expectation" value={user.salary ? `₹${user.salary} LPA` : '—'} />
+              <Field label="Salary expectation" value={user.salary ? `₹${(user.salary / 100000).toFixed(1)} LPA` : '—'} />
               <Field label="Remote preference" value={user.remotePreference || '—'} />
               <Field label="Joined" value={new Date(user.createdAt).toLocaleString()} />
               <div>

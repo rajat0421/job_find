@@ -5,10 +5,18 @@ const UserJob = require('../models/UserJob');
 const SKILL_SYNONYMS = {
   react: ['reactjs', 'react.js'],
   node: ['nodejs', 'node.js'],
+  nodejsnode: ['nodejs', 'node.js'],
   mongo: ['mongodb', 'mongoose'],
   postgres: ['postgresql', 'pg'],
   js: ['javascript'],
   ts: ['typescript'],
+  express: ['expressjs', 'express.js'],
+  expressjs: ['express', 'express.js'],
+  next: ['nextjs', 'next.js'],
+  vue: ['vuejs', 'vue.js'],
+  angular: ['angularjs'],
+  aws: ['amazon web services'],
+  gcp: ['google cloud'],
 };
 
 const normalizeSkill = (skill) => skill.toLowerCase().replace(/[.\s-]/g, '');

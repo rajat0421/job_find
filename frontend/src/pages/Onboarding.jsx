@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import SkillTagInput from '../components/SkillTagInput';
 
 const REMOTE_OPTIONS = [
   { value: 'any', label: 'Any' },
@@ -115,10 +116,8 @@ const Onboarding = () => {
               />
             </div>
 
-            <TagInput
+            <SkillTagInput
               label="Skills"
-              hint="Press Enter or click Add after each skill"
-              placeholder="e.g. Node.js, React, Python..."
               tags={form.skills}
               onChange={(skills) => setForm({ ...form, skills })}
             />

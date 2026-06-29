@@ -57,14 +57,8 @@ const login = async (req, res) => {
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(401).json({ message: 'Invalid credentials' });
 
-    // Auto-grant admin if email matches ADMIN_EMAIL env var
-    if (process.env.ADMIN_EMAIL && user.email === process.env.ADMIN_EMAIL && !user.isAdmin) {
-      await User.updateOne({ _id: user._id }, { isAdmin: true });
-      user.isAdmin = true;
-    }
-
-    const token = jwt.sign({ id: user._id, isAdmin: user.isAdmin }, process.env.JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, isOnboarded: user.isOnboarded, name: user.name, isAdmin: user.isAdmin });
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token, isOnboarded: user.isOnboarded, name: user.name });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

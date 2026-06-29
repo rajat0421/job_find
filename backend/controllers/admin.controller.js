@@ -75,7 +75,7 @@ const runApiForUser = async (req, res) => {
     const params = {
       app_id: process.env.ADZUNA_APP_ID,
       app_key: process.env.ADZUNA_APP_KEY,
-      results_per_page: 20,
+      results_per_page: 50,
       what: 'software engineer developer',
       where: 'India',
     };

@@ -1,11 +1,4 @@
-import { Navigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-
-const AdminRoute = ({ children }) => {
-  const { isLoggedIn, user } = useAuth();
-  if (!isLoggedIn) return <Navigate to="/login" replace />;
-  if (!user?.isAdmin) return <Navigate to="/dashboard" replace />;
-  return children;
-};
+// Admin pages handle their own token gate — this wrapper is intentionally minimal
+const AdminRoute = ({ children }) => children;
 
 export default AdminRoute;

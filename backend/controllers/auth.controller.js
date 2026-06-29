@@ -11,7 +11,20 @@ const register = async (req, res) => {
     if (!email || !password) return res.status(400).json({ message: 'Email and password required' });
 
     const existing = await User.findOne({ email });
-    if (existing) return res.status(409).json({ message: 'Email already registered' });
+    if (existing && existing.isEmailVerified)
+      return res.status(409).json({ message: 'Email already registered' });
+
+    // Unverified user — resend OTP instead of blocking them
+    if (existing && !existing.isEmailVerified) {
+      const otp = generateOtp();
+      await OtpVerification.deleteMany({ email });
+      await OtpVerification.create({ email, otp, expiresAt: otpExpiry() });
+      res.status(201).json({ message: 'Registered. Check your email for the OTP.' });
+      sendOtpEmail(email, otp).catch((err) =>
+        console.error('[Email] OTP send failed for', email, ':', err.message)
+      );
+      return;
+    }
 
     const hashed = await bcrypt.hash(password, 10);
     await User.create({ email, password: hashed });
@@ -19,9 +32,14 @@ const register = async (req, res) => {
     const otp = generateOtp();
     await OtpVerification.deleteMany({ email });
     await OtpVerification.create({ email, otp, expiresAt: otpExpiry() });
-    await sendOtpEmail(email, otp);
 
+    // Respond immediately — don't make the user wait for email delivery
     res.status(201).json({ message: 'Registered. Check your email for the OTP.' });
+
+    // Send email in background — if it fails it logs but doesn't block
+    sendOtpEmail(email, otp).catch((err) =>
+      console.error('[Email] OTP send failed for', email, ':', err.message)
+    );
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -74,9 +92,12 @@ const resendOtp = async (req, res) => {
     const otp = generateOtp();
     await OtpVerification.deleteMany({ email });
     await OtpVerification.create({ email, otp, expiresAt: otpExpiry() });
-    await sendOtpEmail(email, otp);
 
     res.json({ message: 'OTP resent' });
+
+    sendOtpEmail(email, otp).catch((err) =>
+      console.error('[Email] Resend OTP failed for', email, ':', err.message)
+    );
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

@@ -14,11 +14,14 @@ const JobCard = ({ job, onSaveToggle, onApplied }) => {
     } catch {}
   };
 
-  const handleApplied = async () => {
-    try {
-      await api.patch(`/jobs/${job._id}/applied`);
-      onApplied?.(job._id);
-    } catch {}
+  const handleApply = async () => {
+    if (!job.applied) {
+      try {
+        await api.patch(`/jobs/${job._id}/applied`);
+        onApplied?.(job._id);
+      } catch {}
+    }
+    window.open(job.applyLink, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -54,14 +57,16 @@ const JobCard = ({ job, onSaveToggle, onApplied }) => {
 
       {/* Actions */}
       <div className="flex items-center gap-2 pt-1 mt-auto border-t border-slate-100">
-        <a
-          href={job.applyLink}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex-1 text-center text-xs font-semibold bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+        <button
+          onClick={handleApply}
+          className={`flex-1 text-center text-xs font-semibold py-2 rounded-lg transition-colors ${
+            job.applied
+              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+              : 'bg-indigo-600 text-white hover:bg-indigo-700'
+          }`}
         >
-          Apply
-        </a>
+          {job.applied ? 'Applied — View again' : 'View & Apply'}
+        </button>
 
         <button
           onClick={handleSave}
@@ -73,18 +78,6 @@ const JobCard = ({ job, onSaveToggle, onApplied }) => {
         >
           {job.saved ? 'Saved' : 'Save'}
         </button>
-
-        {job.applied ? (
-          <span className="px-3 py-2 text-xs font-medium text-emerald-600">Applied</span>
-        ) : (
-          <button
-            onClick={handleApplied}
-            className="px-3 py-2 text-xs font-medium rounded-lg border border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700 transition-colors"
-            title="Mark as applied"
-          >
-            Applied?
-          </button>
-        )}
       </div>
     </div>
   );

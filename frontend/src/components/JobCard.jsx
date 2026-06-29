@@ -1,9 +1,9 @@
 import api from '../services/api';
 
-const scoreColor = (score) => {
-  if (score >= 75) return 'bg-green-100 text-green-700';
-  if (score >= 50) return 'bg-yellow-100 text-yellow-700';
-  return 'bg-gray-100 text-gray-600';
+const scoreBadge = (score) => {
+  if (score >= 75) return 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200';
+  if (score >= 50) return 'bg-amber-50 text-amber-700 ring-1 ring-amber-200';
+  return 'bg-slate-100 text-slate-500';
 };
 
 const JobCard = ({ job, onSaveToggle, onApplied }) => {
@@ -22,64 +22,68 @@ const JobCard = ({ job, onSaveToggle, onApplied }) => {
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5 flex flex-col gap-3 hover:shadow-md transition-shadow">
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <h3 className="font-semibold text-gray-900 text-base leading-tight">{job.title}</h3>
-          <p className="text-sm text-gray-500 mt-0.5">{job.company || '—'}</p>
+    <div className="bg-white border border-slate-200 rounded-xl p-5 flex flex-col gap-4 hover:border-slate-300 hover:shadow-sm transition-all duration-150">
+
+      {/* Header */}
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h3 className="font-semibold text-slate-900 text-sm leading-snug truncate">{job.title}</h3>
+          <p className="text-sm text-slate-500 mt-0.5">{job.company || 'Company not listed'}</p>
         </div>
-        <span className={`text-xs font-bold px-2.5 py-1 rounded-full shrink-0 ${scoreColor(job.score)}`}>
-          {job.score}% match
+        <span className={`text-xs font-semibold px-2 py-0.5 rounded-md shrink-0 ${scoreBadge(job.score)}`}>
+          {job.score}%
         </span>
       </div>
 
-      <div className="flex flex-wrap gap-2 text-xs text-gray-500">
+      {/* Meta */}
+      <div className="flex flex-col gap-1">
         {job.location && (
-          <span className="flex items-center gap-1">📍 {job.location}</span>
+          <p className="text-xs text-slate-500">{job.location}</p>
         )}
         {job.salaryMin && (
-          <span className="flex items-center gap-1">
-            💰 ₹{(job.salaryMin / 100000).toFixed(1)}–{(job.salaryMax / 100000).toFixed(1)} LPA
-          </span>
-        )}
-        {job.source && (
-          <span className="flex items-center gap-1 capitalize">🔗 {job.source}</span>
+          <p className="text-xs text-slate-500">
+            ₹{(job.salaryMin / 100000).toFixed(1)}–{(job.salaryMax / 100000).toFixed(1)} LPA
+          </p>
         )}
       </div>
 
+      {/* Description */}
       {job.description && (
-        <p className="text-xs text-gray-500 line-clamp-2">{job.description}</p>
+        <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">{job.description}</p>
       )}
 
-      <div className="flex items-center gap-2 mt-auto pt-2 border-t border-gray-100">
+      {/* Actions */}
+      <div className="flex items-center gap-2 pt-1 mt-auto border-t border-slate-100">
         <a
           href={job.applyLink}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-1 text-center text-sm bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition-colors"
+          className="flex-1 text-center text-xs font-semibold bg-indigo-600 text-white py-2 rounded-lg hover:bg-indigo-700 transition-colors"
         >
-          Apply Now
+          Apply
         </a>
+
         <button
           onClick={handleSave}
-          className={`px-3 py-2 text-sm rounded-lg border transition-colors ${
+          className={`px-3 py-2 text-xs font-medium rounded-lg border transition-colors ${
             job.saved
-              ? 'bg-blue-50 border-blue-200 text-blue-600'
-              : 'border-gray-200 text-gray-500 hover:border-gray-300'
+              ? 'bg-indigo-50 border-indigo-200 text-indigo-600'
+              : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700'
           }`}
         >
-          {job.saved ? '★ Saved' : '☆ Save'}
+          {job.saved ? 'Saved' : 'Save'}
         </button>
-        {!job.applied && (
+
+        {job.applied ? (
+          <span className="px-3 py-2 text-xs font-medium text-emerald-600">Applied</span>
+        ) : (
           <button
             onClick={handleApplied}
-            className="px-3 py-2 text-sm rounded-lg border border-gray-200 text-gray-500 hover:border-gray-300 transition-colors"
+            className="px-3 py-2 text-xs font-medium rounded-lg border border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700 transition-colors"
+            title="Mark as applied"
           >
-            ✓
+            Applied?
           </button>
-        )}
-        {job.applied && (
-          <span className="px-3 py-2 text-sm text-green-600">✓ Applied</span>
         )}
       </div>
     </div>

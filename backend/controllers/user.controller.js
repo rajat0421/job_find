@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const { matchJobsForUser } = require('../services/jobMatcher.service');
 
 const onboard = async (req, res) => {
   try {
@@ -12,6 +13,11 @@ const onboard = async (req, res) => {
     );
 
     res.json({ message: 'Profile saved. Welcome aboard!' });
+
+    // Fire-and-forget: score all existing jobs immediately so the dashboard isn't empty
+    matchJobsForUser(req.user.id).catch((err) =>
+      console.error('[Matcher] Onboard match failed:', err.message)
+    );
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

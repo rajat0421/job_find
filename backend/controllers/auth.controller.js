@@ -4,6 +4,7 @@ const User = require('../models/User');
 const OtpVerification = require('../models/OtpVerification');
 const { generateOtp, otpExpiry } = require('../utils/otp');
 const { sendOtpEmail } = require('../services/email.service');
+const { matchJobsForUser } = require('../services/jobMatcher.service');
 
 const register = async (req, res) => {
   try {
@@ -77,6 +78,13 @@ const login = async (req, res) => {
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
     res.json({ token, isOnboarded: user.isOnboarded, name: user.name });
+
+    // Fire-and-forget: score any new jobs since the user last logged in
+    if (user.isOnboarded) {
+      matchJobsForUser(user._id).catch((err) =>
+        console.error('[Matcher] Login match failed:', err.message)
+      );
+    }
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

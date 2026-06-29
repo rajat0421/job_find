@@ -91,4 +91,25 @@ const matchJobsForAllUsers = async () => {
   console.log('[Matcher] Done');
 };
 
-module.exports = { matchJobsForAllUsers, scoreJob };
+// Run immediately after a user completes onboarding — scores all existing jobs so their dashboard isn't empty
+const matchJobsForUser = async (userId) => {
+  const user = await User.findById(userId);
+  if (!user) return;
+
+  // Score up to the 500 most recent jobs in the DB
+  const jobs = await Job.find().sort({ createdAt: -1 }).limit(500);
+  console.log(`[Matcher] Onboard match: ${jobs.length} jobs for user ${user.email}`);
+
+  let created = 0;
+  for (const job of jobs) {
+    const exists = await UserJob.findOne({ userId: user._id, jobId: job._id });
+    if (exists) continue;
+    const score = scoreJob(user, job);
+    await UserJob.create({ userId: user._id, jobId: job._id, score });
+    created++;
+  }
+
+  console.log(`[Matcher] Onboard match done: ${created} UserJob records created for ${user.email}`);
+};
+
+module.exports = { matchJobsForAllUsers, matchJobsForUser, scoreJob };

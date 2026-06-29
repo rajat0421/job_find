@@ -16,8 +16,9 @@ const Login = () => {
     setLoading(true);
     try {
       const res = await api.post('/auth/login', form);
-      login(res.data.token, { email: form.email, name: res.data.name, isOnboarded: res.data.isOnboarded });
-      navigate(res.data.isOnboarded ? '/dashboard' : '/onboarding');
+      login(res.data.token, { email: form.email, name: res.data.name, isOnboarded: res.data.isOnboarded, isAdmin: res.data.isAdmin });
+      if (res.data.isAdmin) navigate('/admin');
+      else navigate(res.data.isOnboarded ? '/dashboard' : '/onboarding');
     } catch (err) {
       setError(err.response?.data?.message || 'Something went wrong');
     } finally {

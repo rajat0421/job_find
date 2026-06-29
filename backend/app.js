@@ -16,4 +16,19 @@ app.use('/api/jobs', jobRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }));
 
+// Manual trigger for testing — remove before production
+app.post('/api/dev/fetch-jobs', async (_req, res) => {
+  try {
+    const { fetchAdzunaJobs } = require('./services/jobFetcher.service');
+    const { matchJobsForAllUsers } = require('./services/jobMatcher.service');
+    await fetchAdzunaJobs();
+    await matchJobsForAllUsers();
+    const Job = require('./models/Job');
+    const count = await Job.countDocuments();
+    res.json({ message: 'Done', totalJobsInDB: count });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports = app;

@@ -187,58 +187,85 @@ const AdminUserDetail = () => {
               <>
                 {/* Summary bar */}
                 <div className="grid grid-cols-3 gap-4">
-                  <StatCard label="Jobs from Adzuna" value={apiResult.rawResponse?.returned ?? '—'} />
-                  <StatCard label="Matched for user" value={apiResult.matched?.count ?? '—'} color="text-green-600" />
-                  <StatCard label="Filtered out" value={apiResult.filtered_out?.count ?? '—'} color="text-red-500" />
+                  <StatCard label="Total jobs fetched" value={apiResult.summary?.totalFetched ?? '—'} />
+                  <StatCard label="Matched for user" value={apiResult.summary?.totalMatched ?? '—'} color="text-green-600" />
+                  <StatCard label="Filtered out" value={apiResult.summary?.totalFiltered ?? '—'} color="text-red-500" />
                 </div>
 
-                {/* Request */}
-                <Section title="📤 Request to Adzuna">
-                  <div className="mb-2 flex gap-3 text-xs text-gray-500">
-                    <span className="font-mono bg-gray-100 px-2 py-1 rounded">{apiResult.request?.method}</span>
-                    <span className="font-mono bg-gray-100 px-2 py-1 rounded break-all">{apiResult.request?.url}</span>
-                  </div>
-                  <JsonBlock data={apiResult.request?.params} />
-                </Section>
-
-                {/* Raw Response */}
-                <Section title="📥 Raw Response from Adzuna">
-                  <p className="text-xs text-gray-500 mb-2">
-                    Total results on Adzuna: <strong>{apiResult.rawResponse?.total_results}</strong> — showing first {apiResult.rawResponse?.returned}
-                  </p>
-                  <JsonBlock data={apiResult.rawResponse?.results} />
-                </Section>
-
-                {/* What user gets */}
-                <Section title={`✅ What this user will receive (score ≥ 40) — ${apiResult.matched?.count} jobs`}>
-                  {apiResult.matched?.jobs?.length === 0 ? (
-                    <p className="text-sm text-gray-400">No jobs matched this user's profile from this batch.</p>
-                  ) : (
-                    <div className="flex flex-col gap-3">
-                      {apiResult.matched?.jobs?.map((item, i) => (
-                        <div key={i} className="border border-gray-200 rounded-lg p-4">
-                          <div className="flex items-start justify-between gap-2 mb-2">
-                            <div>
-                              <p className="font-semibold text-gray-900 text-sm">{item.job.title}</p>
-                              <p className="text-xs text-gray-500">{item.job.company} · {item.job.location}</p>
-                            </div>
-                            <span className={`text-xs font-bold px-2.5 py-1 rounded-full shrink-0 ${scoreColor(item.score)}`}>
-                              {item.score}% match
-                            </span>
-                          </div>
-                          {item.job.salaryMin && (
-                            <p className="text-xs text-gray-500">₹{(item.job.salaryMin / 100000).toFixed(1)}–{(item.job.salaryMax / 100000).toFixed(1)} LPA</p>
-                          )}
-                        </div>
-                      ))}
+                {/* Per-platform sections */}
+                {apiResult.platforms?.map((platform, pi) => (
+                  <div key={pi} className="flex flex-col gap-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold uppercase tracking-widest text-gray-400">{platform.platform}</span>
+                      {platform.error && <span className="text-xs text-red-400">Error: {platform.error}</span>}
                     </div>
-                  )}
-                </Section>
 
-                {/* What got filtered out */}
-                <Section title={`❌ Filtered out (score < 40) — ${apiResult.filtered_out?.count} jobs`} collapsed>
-                  <JsonBlock data={apiResult.filtered_out?.jobs?.map(j => ({ score: j.score, title: j.job.title, company: j.job.company }))} />
-                </Section>
+                    {!platform.error && (
+                      <>
+                        {/* Adzuna-specific: show raw request + response */}
+                        {platform.request && (
+                          <Section title="📤 Request">
+                            <div className="mb-2 flex gap-3 text-xs text-gray-500">
+                              <span className="font-mono bg-gray-100 px-2 py-1 rounded">{platform.request.method}</span>
+                              <span className="font-mono bg-gray-100 px-2 py-1 rounded break-all">{platform.request.url}</span>
+                            </div>
+                            <JsonBlock data={platform.request.params} />
+                          </Section>
+                        )}
+
+                        {platform.raw_results && (
+                          <Section title={`📥 Raw Response — ${platform.total_fetched} jobs`} collapsed>
+                            <JsonBlock data={platform.raw_results} />
+                          </Section>
+                        )}
+
+                        {/* Greenhouse-specific: show board breakdown */}
+                        {platform.boards && (
+                          <Section title={`🏢 Boards checked — ${platform.boards.length} companies, ${platform.total_fetched} jobs`} collapsed>
+                            <div className="flex flex-wrap gap-2">
+                              {platform.boards.map((b) => (
+                                <span key={b.board} className={`text-xs px-2.5 py-1 rounded-full font-medium ${b.error ? 'bg-red-50 text-red-400' : 'bg-gray-100 text-gray-600'}`}>
+                                  {b.board} {!b.error && `(${b.count})`}
+                                </span>
+                              ))}
+                            </div>
+                          </Section>
+                        )}
+
+                        {/* Matched jobs */}
+                        <Section title={`✅ Matched (score ≥ 40) — ${platform.matched?.length ?? 0} jobs`}>
+                          {platform.matched?.length === 0 ? (
+                            <p className="text-sm text-gray-400">No jobs matched this user's profile from this batch.</p>
+                          ) : (
+                            <div className="flex flex-col gap-3">
+                              {platform.matched?.map((item, i) => (
+                                <div key={i} className="border border-gray-200 rounded-lg p-4">
+                                  <div className="flex items-start justify-between gap-2 mb-1">
+                                    <div>
+                                      <p className="font-semibold text-gray-900 text-sm">{item.job.title}</p>
+                                      <p className="text-xs text-gray-500">{item.job.company} · {item.job.location}</p>
+                                    </div>
+                                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full shrink-0 ${scoreColor(item.score)}`}>
+                                      {item.score}% match
+                                    </span>
+                                  </div>
+                                  {item.job.salaryMin && (
+                                    <p className="text-xs text-gray-500 mt-1">₹{(item.job.salaryMin / 100000).toFixed(1)}–{(item.job.salaryMax / 100000).toFixed(1)} LPA</p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </Section>
+
+                        {/* Filtered out */}
+                        <Section title={`❌ Filtered out (score < 40) — ${platform.filtered_out?.length ?? 0} jobs`} collapsed>
+                          <JsonBlock data={platform.filtered_out?.map(j => ({ score: j.score, title: j.job.title, company: j.job.company }))} />
+                        </Section>
+                      </>
+                    )}
+                  </div>
+                ))}
               </>
             )}
           </div>

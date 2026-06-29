@@ -1,8 +1,95 @@
 const axios = require('axios');
+const crypto = require('crypto');
 const User = require('../models/User');
 const Job = require('../models/Job');
 const UserJob = require('../models/UserJob');
 const { scoreJob } = require('../services/jobMatcher.service');
+
+const generateJobHash = (title, company, location) =>
+  crypto.createHash('md5').update(`${title}-${company}-${location}`).digest('hex');
+
+// Fetch + score Adzuna jobs live for a specific user (no DB save)
+const runAdzunaForUser = async (user) => {
+  const params = {
+    app_id: process.env.ADZUNA_APP_ID,
+    app_key: process.env.ADZUNA_APP_KEY,
+    results_per_page: 50,
+    what: 'software engineer developer',
+    where: 'India',
+  };
+
+  const url = 'https://api.adzuna.com/v1/api/jobs/in/search/1';
+  const response = await axios.get(url, { params });
+  const rawJobs = response.data.results || [];
+
+  const scored = rawJobs
+    .map((j) => {
+      const jobObj = {
+        title: j.title?.label || j.title || '',
+        company: j.company?.display_name || '',
+        location: j.location?.display_name || '',
+        salaryMin: j.salary_min,
+        salaryMax: j.salary_max,
+        description: j.description || '',
+        applyLink: j.redirect_url,
+      };
+      return { job: jobObj, score: scoreJob(user, jobObj) };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  return {
+    platform: 'Adzuna',
+    request: { method: 'GET', url, params: { ...params, app_key: '***hidden***' } },
+    total_fetched: rawJobs.length,
+    raw_results: rawJobs,
+    matched: scored.filter((j) => j.score >= 40),
+    filtered_out: scored.filter((j) => j.score < 40),
+  };
+};
+
+// Fetch + score Greenhouse jobs live for a specific user (no DB save)
+const GREENHOUSE_BOARDS = require('../platforms/greenhouse').BOARDS;
+
+const runGreenhouseForUser = async (user) => {
+  const allJobs = [];
+  const boardResults = [];
+
+  for (const board of GREENHOUSE_BOARDS) {
+    try {
+      const res = await axios.get(
+        `https://boards-api.greenhouse.io/v1/boards/${board}/jobs?content=true`,
+        { timeout: 8000 }
+      );
+      const jobs = res.data?.jobs || [];
+      boardResults.push({ board, count: jobs.length });
+
+      for (const j of jobs) {
+        const jobObj = {
+          title: j.title || '',
+          company: board.charAt(0).toUpperCase() + board.slice(1),
+          location: j.location?.name || '',
+          salaryMin: null,
+          salaryMax: null,
+          description: j.content || '',
+          applyLink: j.absolute_url,
+        };
+        allJobs.push({ job: jobObj, score: scoreJob(user, jobObj) });
+      }
+    } catch {
+      boardResults.push({ board, count: 0, error: true });
+    }
+  }
+
+  allJobs.sort((a, b) => b.score - a.score);
+
+  return {
+    platform: 'Greenhouse',
+    boards: boardResults,
+    total_fetched: allJobs.length,
+    matched: allJobs.filter((j) => j.score >= 40),
+    filtered_out: allJobs.filter((j) => j.score < 40),
+  };
+};
 
 // GET /api/admin/users
 const listUsers = async (_req, res) => {
@@ -66,47 +153,25 @@ const getUserDetail = async (req, res) => {
 };
 
 // POST /api/admin/users/:id/run-api
-// Calls Adzuna live, scores results for this user, returns raw req + raw res + matched jobs
+// Runs all platforms live for this user — returns per-platform breakdown + combined totals
 const runApiForUser = async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select('-password');
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const params = {
-      app_id: process.env.ADZUNA_APP_ID,
-      app_key: process.env.ADZUNA_APP_KEY,
-      results_per_page: 50,
-      what: 'software engineer developer',
-      where: 'India',
-    };
+    const [adzuna, greenhouse] = await Promise.allSettled([
+      runAdzunaForUser(user),
+      runGreenhouseForUser(user),
+    ]);
 
-    const requestInfo = {
-      method: 'GET',
-      url: 'https://api.adzuna.com/v1/api/jobs/in/search/1',
-      params: { ...params, app_key: '***hidden***' },
-    };
+    const platforms = [
+      adzuna.status === 'fulfilled' ? adzuna.value : { platform: 'Adzuna', error: adzuna.reason?.message },
+      greenhouse.status === 'fulfilled' ? greenhouse.value : { platform: 'Greenhouse', error: greenhouse.reason?.message },
+    ];
 
-    const response = await axios.get(requestInfo.url, { params });
-    const rawJobs = response.data.results || [];
-
-    // Score every job from this API call against this specific user
-    const scored = rawJobs
-      .map((j) => {
-        const jobObj = {
-          title: j.title?.label || j.title || '',
-          company: j.company?.display_name || '',
-          location: j.location?.display_name || '',
-          salaryMin: j.salary_min,
-          salaryMax: j.salary_max,
-          description: j.description || '',
-          applyLink: j.redirect_url,
-        };
-        return { job: jobObj, score: scoreJob(user, jobObj), rawAdzuna: j };
-      })
-      .sort((a, b) => b.score - a.score);
-
-    const willShow = scored.filter((j) => j.score >= 40);
-    const wontShow = scored.filter((j) => j.score < 40);
+    const totalFetched = platforms.reduce((s, p) => s + (p.total_fetched || 0), 0);
+    const totalMatched = platforms.reduce((s, p) => s + (p.matched?.length || 0), 0);
+    const totalFiltered = platforms.reduce((s, p) => s + (p.filtered_out?.length || 0), 0);
 
     res.json({
       user: {
@@ -118,21 +183,8 @@ const runApiForUser = async (req, res) => {
         salary: user.salary,
         remotePreference: user.remotePreference,
       },
-      request: requestInfo,
-      rawResponse: {
-        total_results: response.data.count,
-        returned: rawJobs.length,
-        results: rawJobs,
-      },
-      matched: {
-        count: willShow.length,
-        minScoreThreshold: 40,
-        jobs: willShow,
-      },
-      filtered_out: {
-        count: wontShow.length,
-        jobs: wontShow,
-      },
+      summary: { totalFetched, totalMatched, totalFiltered },
+      platforms,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });

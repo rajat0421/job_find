@@ -11,6 +11,7 @@ const userSchema = new mongoose.Schema({
   locations: [{ type: String }],
   salary: { type: Number },
   remotePreference: { type: String, enum: ['remote', 'hybrid', 'office', 'any'], default: 'any' },
+  isAdmin: { type: Boolean, default: false },
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

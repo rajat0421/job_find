@@ -2,19 +2,43 @@ import { useState, useRef, useEffect } from 'react';
 
 const SKILLS = [
   // Languages
-  'JavaScript', 'TypeScript', 'Python', 'Java', 'Go', 'Rust', 'Ruby', 'PHP', 'Swift', 'Kotlin', 'C', 'C++', 'C#', 'Scala', 'R',
-  // Frontend
-  'React', 'Next.js', 'Vue.js', 'Nuxt.js', 'Angular', 'Svelte', 'HTML', 'CSS', 'Tailwind CSS', 'SASS', 'Redux', 'Zustand', 'Webpack', 'Vite',
-  // Backend
-  'Node.js', 'Express.js', 'NestJS', 'Django', 'FastAPI', 'Flask', 'Spring Boot', 'Laravel', 'Ruby on Rails', 'GraphQL', 'REST API', 'gRPC',
-  // Mobile
-  'React Native', 'Flutter', 'Android', 'iOS', 'Expo',
+  'JavaScript', 'TypeScript', 'Python', 'Java', 'Go', 'Rust', 'Ruby', 'PHP', 'Swift', 'Kotlin', 'C', 'C++', 'C#', 'Scala', 'R', 'Bash', 'Shell Scripting', 'PowerShell', 'Perl', 'MATLAB',
+
+  // Frontend Development
+  'Frontend Development', 'React', 'Next.js', 'Vue.js', 'Nuxt.js', 'Angular', 'Svelte', 'HTML', 'CSS', 'Tailwind CSS', 'SASS', 'Bootstrap', 'Redux', 'Zustand', 'Webpack', 'Vite', 'Web Performance', 'Accessibility (a11y)', 'Responsive Design', 'Progressive Web Apps',
+
+  // Backend Development
+  'Backend Development', 'Node.js', 'Express.js', 'NestJS', 'Django', 'FastAPI', 'Flask', 'Spring Boot', 'Laravel', 'Ruby on Rails', 'GraphQL', 'REST API', 'gRPC', 'WebSockets', 'Microservices', 'API Design', 'Server-Side Rendering',
+
+  // Full Stack
+  'Full Stack Development', 'MERN Stack', 'MEAN Stack', 'LAMP Stack',
+
+  // Mobile Development
+  'Mobile Development', 'React Native', 'Flutter', 'Android Development', 'iOS Development', 'Expo', 'Kotlin Multiplatform', 'SwiftUI',
+
   // Database
-  'MongoDB', 'PostgreSQL', 'MySQL', 'SQLite', 'Redis', 'Elasticsearch', 'DynamoDB', 'Cassandra', 'Supabase', 'Firebase', 'Prisma', 'Mongoose',
+  'MongoDB', 'PostgreSQL', 'MySQL', 'SQLite', 'Redis', 'Elasticsearch', 'DynamoDB', 'Cassandra', 'Supabase', 'Firebase', 'Prisma', 'Mongoose', 'SQL', 'NoSQL', 'Database Design',
+
   // Cloud & DevOps
-  'AWS', 'GCP', 'Azure', 'Docker', 'Kubernetes', 'Terraform', 'CI/CD', 'GitHub Actions', 'Jenkins', 'Linux', 'Nginx',
-  // Other
-  'Git', 'GraphQL', 'WebSockets', 'Microservices', 'System Design', 'Data Structures', 'Machine Learning', 'TensorFlow', 'PyTorch', 'OpenAI API',
+  'AWS', 'GCP', 'Google Cloud', 'Azure', 'Docker', 'Kubernetes', 'Terraform', 'CI/CD', 'GitHub Actions', 'Jenkins', 'Linux', 'Nginx', 'DevOps', 'Site Reliability Engineering', 'Infrastructure as Code', 'Ansible', 'Helm', 'Prometheus', 'Grafana', 'CloudFormation',
+
+  // Cybersecurity
+  'Cybersecurity', 'Penetration Testing', 'Ethical Hacking', 'Network Security', 'Application Security', 'IAM', 'Identity and Access Management', 'OAuth', 'SAML', 'Zero Trust', 'OWASP', 'Vulnerability Assessment', 'Incident Response', 'SIEM', 'SOC', 'Threat Modeling', 'Burp Suite', 'Metasploit', 'Nmap', 'Wireshark', 'Cryptography', 'PKI', 'Firewall', 'Intrusion Detection', 'Risk Assessment', 'Compliance', 'GDPR', 'ISO 27001', 'SOC 2',
+
+  // Data & ML
+  'Data Science', 'Machine Learning', 'Deep Learning', 'Artificial Intelligence', 'Natural Language Processing', 'Computer Vision', 'Data Engineering', 'Data Analysis', 'Data Visualization', 'Business Intelligence', 'TensorFlow', 'PyTorch', 'Scikit-learn', 'Pandas', 'NumPy', 'Spark', 'Hadoop', 'Airflow', 'dbt', 'Tableau', 'Power BI', 'LLMs', 'OpenAI API', 'LangChain',
+
+  // Design
+  'UI/UX Design', 'Product Design', 'Figma', 'Sketch', 'Adobe XD', 'User Research', 'Wireframing', 'Prototyping', 'Design Systems', 'Motion Design',
+
+  // QA & Testing
+  'QA Engineering', 'Test Automation', 'Selenium', 'Cypress', 'Playwright', 'Jest', 'Unit Testing', 'Integration Testing', 'Load Testing', 'Manual Testing',
+
+  // Blockchain
+  'Blockchain', 'Web3', 'Solidity', 'Smart Contracts', 'Ethereum', 'DeFi',
+
+  // General
+  'Git', 'System Design', 'Data Structures', 'Algorithms', 'Object-Oriented Programming', 'Functional Programming', 'Agile', 'Scrum', 'Technical Writing', 'Open Source',
 ];
 
 const SkillTagInput = ({ label, tags, onChange }) => {

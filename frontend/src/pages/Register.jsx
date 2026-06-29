@@ -3,9 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 
 const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
-
 const generatePassword = () =>
-  Array.from({ length: 12 }, () => CHARS[Math.floor(Math.random() * CHARS.length)]).join('');
+  Array.from({ length: 14 }, () => CHARS[Math.floor(Math.random() * CHARS.length)]).join('');
 
 const Register = () => {
   const [form, setForm] = useState({ email: '', password: '' });
@@ -16,8 +15,7 @@ const Register = () => {
   const navigate = useNavigate();
 
   const handleGenerate = () => {
-    const pwd = generatePassword();
-    setForm({ ...form, password: pwd });
+    setForm({ ...form, password: generatePassword() });
     setShowPassword(true);
   };
 
@@ -42,88 +40,82 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-        <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold text-gray-900">Create account</h1>
-          <p className="text-sm text-gray-500 mt-1">Get matched jobs delivered daily</p>
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+      <div className="w-full max-w-sm">
+
+        <div className="text-center mb-8">
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
+            Job<span className="text-indigo-600">Find</span>
+          </h1>
+          <p className="text-sm text-slate-500 mt-2">Matched jobs delivered to your inbox every morning</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <input
-              type="email"
-              required
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              placeholder="you@example.com"
-            />
-          </div>
+        <div className="bg-white border border-slate-200 rounded-2xl p-7 shadow-sm">
+          <h2 className="text-base font-semibold text-slate-900 mb-5">Create your account</h2>
 
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-sm font-medium text-gray-700">Password</label>
-              <button
-                type="button"
-                onClick={handleGenerate}
-                className="text-xs text-blue-600 hover:text-blue-700 font-medium"
-              >
-                ⚡ Generate
-              </button>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Email address</label>
+              <input
+                type="email"
+                required
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                placeholder="you@example.com"
+              />
             </div>
 
-            <div className="relative">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                required
-                minLength={6}
-                value={form.password}
-                onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 pr-20 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Min 6 characters"
-              />
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                {form.password && (
-                  <button
-                    type="button"
-                    onClick={handleCopy}
-                    className="text-xs text-gray-400 hover:text-gray-600 px-1"
-                    title="Copy password"
-                  >
-                    {copied ? '✓' : '⎘'}
-                  </button>
-                )}
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-sm font-medium text-slate-700">Password</label>
                 <button
                   type="button"
-                  onClick={() => setShowPassword((v) => !v)}
-                  className="text-xs text-gray-400 hover:text-gray-600 px-1"
+                  onClick={handleGenerate}
+                  className="text-xs font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
                 >
-                  {showPassword ? 'Hide' : 'Show'}
+                  Generate strong password
                 </button>
+              </div>
+
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  minLength={6}
+                  value={form.password}
+                  onChange={(e) => setForm({ ...form, password: e.target.value })}
+                  className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 pr-24 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                  placeholder="Min 6 characters"
+                />
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                  {form.password && (
+                    <button type="button" onClick={handleCopy} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">
+                      {copied ? 'Copied' : 'Copy'}
+                    </button>
+                  )}
+                  <button type="button" onClick={() => setShowPassword(v => !v)} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">
+                    {showPassword ? 'Hide' : 'Show'}
+                  </button>
+                </div>
               </div>
             </div>
 
-            {copied && (
-              <p className="text-xs text-green-600 mt-1">Password copied to clipboard!</p>
-            )}
-          </div>
+            {error && <p className="text-sm text-red-500">{error}</p>}
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-indigo-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-60 mt-1"
+            >
+              {loading ? 'Creating account...' : 'Create account'}
+            </button>
+          </form>
+        </div>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-blue-700 transition-colors disabled:opacity-60"
-          >
-            {loading ? 'Creating account...' : 'Create account'}
-          </button>
-        </form>
-
-        <p className="text-center text-sm text-gray-500 mt-5">
+        <p className="text-center text-sm text-slate-500 mt-5">
           Already have an account?{' '}
-          <Link to="/login" className="text-blue-600 hover:underline">Sign in</Link>
+          <Link to="/login" className="font-medium text-indigo-600 hover:text-indigo-700">Sign in</Link>
         </p>
       </div>
     </div>

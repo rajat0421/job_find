@@ -3,7 +3,7 @@ const axios = require('axios');
 const sendHtmlEmail = async (to, subject, html) => {
   const res = await axios.post(
     process.env.EMAIL_API_URL,
-    { to, subject, html },
+    { to, subject, html, fromName: 'JobFind' },
     {
       headers: {
         'Content-Type': 'application/json',

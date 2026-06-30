@@ -38,7 +38,7 @@ const sendJobDigestEmail = (to, name, jobs) => {
         <p style="margin:8px 0;">
           <span style="background:#dbeafe;color:#1d4ed8;padding:3px 10px;border-radius:999px;font-size:13px;font-weight:600;">${j.score}% match</span>
         </p>
-        ${j.job.salaryMin ? `<p style="color:#6b7280;font-size:13px;margin:4px 0;">₹${(j.job.salaryMin / 100000).toFixed(1)}–${(j.job.salaryMax / 100000).toFixed(1)} LPA</p>` : ''}
+        ${j.job.salaryMin && j.job.salaryMax ? `<p style="color:#6b7280;font-size:13px;margin:4px 0;">₹${(j.job.salaryMin / 100000).toFixed(1)}–${(j.job.salaryMax / 100000).toFixed(1)} LPA</p>` : ''}
         <a href="${j.job.applyLink}" style="display:inline-block;margin-top:10px;padding:8px 18px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-size:14px;">Apply Now →</a>
       </div>
     `

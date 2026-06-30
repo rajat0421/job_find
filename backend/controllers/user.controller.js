@@ -35,10 +35,16 @@ const getProfile = async (req, res) => {
 const updateProfile = async (req, res) => {
   try {
     const { name, skills, experience, locations, salary, remotePreference } = req.body;
-    await User.updateOne(
-      { _id: req.user.id },
-      { name, skills, experience, locations, salary, remotePreference }
-    );
+    const update = {};
+    if (name              !== undefined) update.name              = name;
+    if (skills            !== undefined) update.skills            = skills;
+    if (experience        !== undefined) update.experience        = experience;
+    if (locations         !== undefined) update.locations         = locations;
+    if (remotePreference  !== undefined) update.remotePreference  = remotePreference;
+    // salary can be 0 or null (user clearing it) — only skip if not sent at all
+    if (salary !== undefined) update.salary = salary || null;
+
+    await User.updateOne({ _id: req.user.id }, { $set: update });
     res.json({ message: 'Profile updated' });
   } catch (err) {
     res.status(500).json({ message: err.message });

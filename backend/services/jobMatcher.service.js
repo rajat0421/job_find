@@ -73,43 +73,50 @@ const scoreJob = (user, job) => {
 
 const matchJobsForAllUsers = async () => {
   const users = await User.find({ isOnboarded: true, isEmailVerified: true });
-  // Only score jobs fetched in the last 2 hours to avoid re-scoring everything
   const jobs = await Job.find({ createdAt: { $gte: new Date(Date.now() - 2 * 60 * 60 * 1000) } });
 
   console.log(`[Matcher] ${jobs.length} jobs × ${users.length} users`);
 
   for (const user of users) {
-    for (const job of jobs) {
-      const exists = await UserJob.findOne({ userId: user._id, jobId: job._id });
-      if (exists) continue;
-
-      const score = scoreJob(user, job);
-      await UserJob.create({ userId: user._id, jobId: job._id, score });
-    }
+    await _matchJobsForUser(user, jobs);
   }
 
   console.log('[Matcher] Done');
 };
 
-// Run immediately after a user completes onboarding — scores all existing jobs so their dashboard isn't empty
+// Run immediately after a user completes onboarding or logs in — scores all existing jobs so their dashboard isn't empty
 const matchJobsForUser = async (userId) => {
   const user = await User.findById(userId);
   if (!user) return;
 
-  // Score up to the 500 most recent jobs in the DB
   const jobs = await Job.find().sort({ createdAt: -1 }).limit(500);
   console.log(`[Matcher] Onboard match: ${jobs.length} jobs for user ${user.email}`);
 
-  let created = 0;
+  const created = await _matchJobsForUser(user, jobs);
+  console.log(`[Matcher] Onboard match done: ${created} UserJob records created for ${user.email}`);
+};
+
+// Shared core: scores a list of jobs for one user, bulk-inserts new UserJob records
+const _matchJobsForUser = async (user, jobs) => {
+  if (!jobs.length) return 0;
+
+  // Fetch all already-matched jobIds for this user in one query
+  const existing = await UserJob.find({ userId: user._id, jobId: { $in: jobs.map((j) => j._id) } }).select('jobId');
+  const existingSet = new Set(existing.map((uj) => uj.jobId.toString()));
+
+  const toInsert = [];
   for (const job of jobs) {
-    const exists = await UserJob.findOne({ userId: user._id, jobId: job._id });
-    if (exists) continue;
+    if (existingSet.has(job._id.toString())) continue;
     const score = scoreJob(user, job);
-    await UserJob.create({ userId: user._id, jobId: job._id, score });
-    created++;
+    toInsert.push({ userId: user._id, jobId: job._id, score });
   }
 
-  console.log(`[Matcher] Onboard match done: ${created} UserJob records created for ${user.email}`);
+  if (toInsert.length) {
+    // ordered: false — continue on duplicate key errors (race conditions)
+    await UserJob.insertMany(toInsert, { ordered: false }).catch(() => {});
+  }
+
+  return toInsert.length;
 };
 
 module.exports = { matchJobsForAllUsers, matchJobsForUser, scoreJob };

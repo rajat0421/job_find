@@ -18,13 +18,15 @@ const getMatchedJobs = async (req, res) => {
         .populate('jobId'),
     ]);
 
-    const jobs = userJobs.map((uj) => ({
-      ...uj.jobId.toObject(),
-      score: uj.score,
-      saved: uj.saved,
-      applied: uj.applied,
-      userJobId: uj._id,
-    }));
+    const jobs = userJobs
+      .filter((uj) => uj.jobId) // skip UserJobs whose Job was deleted
+      .map((uj) => ({
+        ...uj.jobId.toObject(),
+        score: uj.score,
+        saved: uj.saved,
+        applied: uj.applied,
+        userJobId: uj._id,
+      }));
 
     res.json({ jobs, total, page, pages: Math.ceil(total / limit) });
   } catch (err) {

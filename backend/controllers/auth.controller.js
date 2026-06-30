@@ -15,8 +15,10 @@ const register = async (req, res) => {
     if (existing && existing.isEmailVerified)
       return res.status(409).json({ message: 'Email already registered' });
 
-    // Unverified user — resend OTP instead of blocking them
+    // Unverified user — update their password (they may have retyped it) and resend OTP
     if (existing && !existing.isEmailVerified) {
+      const hashed = await bcrypt.hash(password, 10);
+      await User.updateOne({ email }, { password: hashed });
       const otp = generateOtp();
       await OtpVerification.deleteMany({ email });
       await OtpVerification.create({ email, otp, expiresAt: otpExpiry() });

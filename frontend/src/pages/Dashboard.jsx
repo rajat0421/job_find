@@ -11,6 +11,84 @@ const StatCard = ({ label, value, highlight }) => (
   </div>
 );
 
+const ADMIN_EMAIL = 'rajattalekar5143@gmail.com';
+
+const SCHEDULE_TIERS = [
+  {
+    key: 24,
+    label: 'Daily',
+    sublabel: 'Once per day',
+    premium: false,
+  },
+  {
+    key: 5,
+    label: 'Every 5 hrs',
+    sublabel: '5× per day',
+    premium: true,
+  },
+  {
+    key: 1,
+    label: 'Every hour',
+    sublabel: '24× per day',
+    premium: true,
+  },
+];
+
+const ScheduleSection = ({ currentInterval }) => (
+  <div className="bg-[#12121c] border border-white/10 rounded-2xl p-6 mb-4">
+    <p className="text-[11px] text-slate-500 uppercase tracking-widest mb-5">Digest Frequency</p>
+    <div className="grid grid-cols-3 gap-3">
+      {SCHEDULE_TIERS.map((tier) => {
+        const isActive = currentInterval === tier.key;
+        return (
+          <div
+            key={tier.key}
+            className={`relative rounded-xl border p-4 transition-colors ${
+              isActive
+                ? 'border-violet-500/50 bg-violet-600/10'
+                : 'border-white/[0.07] bg-[#0f0f1a]'
+            }`}
+          >
+            {isActive && (
+              <span className="absolute top-2.5 right-2.5 text-[9px] bg-violet-600 text-white px-1.5 py-0.5 rounded-full font-semibold tracking-wide uppercase">
+                Active
+              </span>
+            )}
+            {tier.premium && !isActive && (
+              <span className="absolute top-2.5 right-2.5 text-[9px] bg-amber-500/15 text-amber-400 border border-amber-500/25 px-1.5 py-0.5 rounded-full font-semibold tracking-wide uppercase">
+                Premium
+              </span>
+            )}
+
+            <p className="text-white text-sm font-semibold mb-0.5 mt-0.5">{tier.label}</p>
+            <p className="text-slate-500 text-xs mb-3">{tier.sublabel}</p>
+
+            {tier.premium ? (
+              <a
+                href={`mailto:${ADMIN_EMAIL}?subject=JobFind%20Premium%20—%20${encodeURIComponent(tier.label)}%20digest&body=Hi%2C%20I'd%20like%20to%20upgrade%20my%20JobFind%20digest%20frequency%20to%20${encodeURIComponent(tier.label)}.`}
+                className="text-[11px] text-violet-400 hover:text-violet-300 font-medium transition-colors"
+              >
+                Contact admin →
+              </a>
+            ) : (
+              <span className="text-[11px] text-emerald-500 font-medium">Free</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+    {!SCHEDULE_TIERS.find(t => t.premium && currentInterval === t.key) && (
+      <p className="text-[11px] text-slate-600 mt-4">
+        Want faster updates? Email{' '}
+        <a href={`mailto:${ADMIN_EMAIL}`} className="text-slate-500 hover:text-slate-400 underline underline-offset-2">
+          {ADMIN_EMAIL}
+        </a>{' '}
+        to upgrade.
+      </p>
+    )}
+  </div>
+);
+
 const Dashboard = () => {
   const { user } = useAuth();
   const [profile, setProfile] = useState(null);
@@ -54,6 +132,11 @@ const Dashboard = () => {
           <StatCard label="Digest" value={getScheduleText()} />
           <StatCard label="Sources" value="90+ companies" />
         </div>
+
+        {/* Schedule upgrade */}
+        {profile && (
+          <ScheduleSection currentInterval={profile.emailIntervalHours ?? 24} />
+        )}
 
         {/* How it works */}
         <div className="bg-[#12121c] border border-white/10 rounded-2xl p-6 mb-4">

@@ -191,4 +191,19 @@ const runApiForUser = async (req, res) => {
   }
 };
 
-module.exports = { listUsers, getUserDetail, runApiForUser };
+// PATCH /api/admin/users/:id/email-schedule
+const updateEmailSchedule = async (req, res) => {
+  try {
+    const { emailIntervalHours, emailSendHourIST } = req.body;
+    const update = {};
+    if (emailIntervalHours !== undefined) update.emailIntervalHours = Number(emailIntervalHours);
+    if (emailSendHourIST   !== undefined) update.emailSendHourIST   = Number(emailSendHourIST);
+
+    await User.updateOne({ _id: req.params.id }, update);
+    res.json({ message: 'Email schedule updated' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule };

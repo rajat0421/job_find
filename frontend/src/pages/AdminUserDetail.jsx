@@ -10,6 +10,17 @@ const JsonBlock = ({ data }) => (
   </pre>
 );
 
+const INTERVAL_OPTIONS = [
+  { label: 'Every hour', value: 1 },
+  { label: 'Every 5 hours', value: 5 },
+  { label: 'Daily', value: 24 },
+];
+
+const IST_HOURS = Array.from({ length: 24 }, (_, i) => ({
+  value: i,
+  label: `${String(i).padStart(2, '0')}:00 IST`,
+}));
+
 const AdminUserDetail = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -17,13 +28,32 @@ const AdminUserDetail = () => {
   const [loading, setLoading] = useState(true);
   const [apiResult, setApiResult] = useState(null);
   const [running, setRunning] = useState(false);
-  const [activeTab, setActiveTab] = useState('profile'); // profile | jobs | api
+  const [activeTab, setActiveTab] = useState('profile');
+  const [schedule, setSchedule] = useState({ emailIntervalHours: 24, emailSendHourIST: 10 });
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleSaved, setScheduleSaved] = useState(false);
 
   useEffect(() => {
     adminApi.get(`/admin/users/${id}`)
-      .then((r) => setDetail(r.data))
+      .then((r) => {
+        setDetail(r.data);
+        setSchedule({
+          emailIntervalHours: r.data.user.emailIntervalHours ?? 24,
+          emailSendHourIST:   r.data.user.emailSendHourIST   ?? 10,
+        });
+      })
       .finally(() => setLoading(false));
   }, [id]);
+
+  const saveSchedule = async () => {
+    setScheduleSaving(true);
+    try {
+      await adminApi.patch(`/admin/users/${id}/email-schedule`, schedule);
+      setScheduleSaved(true);
+      setTimeout(() => setScheduleSaved(false), 2500);
+    } catch {}
+    finally { setScheduleSaving(false); }
+  };
 
   const runApi = async () => {
     setRunning(true);
@@ -99,28 +129,86 @@ const AdminUserDetail = () => {
 
         {/* Profile tab */}
         {activeTab === 'profile' && (
-          <div className="bg-white border border-gray-200 rounded-xl p-6">
-            <div className="grid grid-cols-2 gap-6">
-              <Field label="Email" value={user.email} />
-              <Field label="Name" value={user.name || '—'} />
-              <Field label="Experience" value={user.experience != null ? `${user.experience} years` : '—'} />
-              <Field label="Salary expectation" value={user.salary ? `₹${(user.salary / 100000).toFixed(1)} LPA` : '—'} />
-              <Field label="Remote preference" value={user.remotePreference || '—'} />
-              <Field label="Joined" value={new Date(user.createdAt).toLocaleString()} />
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Skills</p>
-                <div className="flex flex-wrap gap-2">
-                  {user.skills?.length ? user.skills.map((s) => (
-                    <span key={s} className="bg-blue-50 text-blue-700 text-xs px-2.5 py-1 rounded-full">{s}</span>
-                  )) : <span className="text-gray-400 text-sm">—</span>}
+          <div className="flex flex-col gap-5">
+            <div className="bg-white border border-gray-200 rounded-xl p-6">
+              <div className="grid grid-cols-2 gap-6">
+                <Field label="Email" value={user.email} />
+                <Field label="Name" value={user.name || '—'} />
+                <Field label="Experience" value={user.experience != null ? `${user.experience} years` : '—'} />
+                <Field label="Salary expectation" value={user.salary ? `₹${(user.salary / 100000).toFixed(1)} LPA` : '—'} />
+                <Field label="Remote preference" value={user.remotePreference || '—'} />
+                <Field label="Joined" value={new Date(user.createdAt).toLocaleString()} />
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Skills</p>
+                  <div className="flex flex-wrap gap-2">
+                    {user.skills?.length ? user.skills.map((s) => (
+                      <span key={s} className="bg-blue-50 text-blue-700 text-xs px-2.5 py-1 rounded-full">{s}</span>
+                    )) : <span className="text-gray-400 text-sm">—</span>}
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Preferred locations</p>
+                  <div className="flex flex-wrap gap-2">
+                    {user.locations?.length ? user.locations.map((l) => (
+                      <span key={l} className="bg-gray-100 text-gray-700 text-xs px-2.5 py-1 rounded-full">{l}</span>
+                    )) : <span className="text-gray-400 text-sm">—</span>}
+                  </div>
                 </div>
               </div>
-              <div>
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Preferred locations</p>
-                <div className="flex flex-wrap gap-2">
-                  {user.locations?.length ? user.locations.map((l) => (
-                    <span key={l} className="bg-gray-100 text-gray-700 text-xs px-2.5 py-1 rounded-full">{l}</span>
-                  )) : <span className="text-gray-400 text-sm">—</span>}
+            </div>
+
+            {/* Email schedule */}
+            <div className="bg-white border border-gray-200 rounded-xl p-6">
+              <p className="text-sm font-semibold text-gray-900 mb-1">Email digest schedule</p>
+              <p className="text-xs text-gray-400 mb-4">
+                Last sent: {user.lastEmailedAt ? new Date(user.lastEmailedAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST' : 'Never'}
+              </p>
+
+              <div className="flex flex-col gap-4">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 mb-2">Frequency</p>
+                  <div className="flex gap-2">
+                    {INTERVAL_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setSchedule((s) => ({ ...s, emailIntervalHours: opt.value }))}
+                        className={`px-4 py-2 text-sm rounded-lg border font-medium transition-colors ${
+                          schedule.emailIntervalHours === opt.value
+                            ? 'bg-blue-600 text-white border-blue-600'
+                            : 'border-gray-300 text-gray-600 hover:border-gray-400'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {schedule.emailIntervalHours === 24 && (
+                  <div>
+                    <p className="text-xs font-medium text-gray-500 mb-2">Send at (IST)</p>
+                    <select
+                      value={schedule.emailSendHourIST}
+                      onChange={(e) => setSchedule((s) => ({ ...s, emailSendHourIST: Number(e.target.value) }))}
+                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      {IST_HOURS.map((h) => (
+                        <option key={h.value} value={h.value}>{h.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={saveSchedule}
+                    disabled={scheduleSaving}
+                    className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
+                  >
+                    {scheduleSaving ? 'Saving...' : 'Save schedule'}
+                  </button>
+                  {scheduleSaved && <span className="text-sm text-green-600">Saved</span>}
                 </div>
               </div>
             </div>

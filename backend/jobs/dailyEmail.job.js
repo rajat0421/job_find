@@ -3,23 +3,28 @@ const User = require('../models/User');
 const UserJob = require('../models/UserJob');
 const { sendJobDigestEmail } = require('../services/email.service');
 
-// EMAIL_INTERVAL_HOURS — how often to send: 1, 5, or 24 (default: 24)
-// EMAIL_SEND_HOUR_IST  — which IST hour to send at for 24h mode (default: 8 = 8:00 AM IST)
-const buildCronSchedule = () => {
-  const interval = parseInt(process.env.EMAIL_INTERVAL_HOURS || '24', 10);
-  const hourIST  = parseInt(process.env.EMAIL_SEND_HOUR_IST  || '8',  10);
+const isDue = (user) => {
+  const now = Date.now();
+  const intervalMs = user.emailIntervalHours * 60 * 60 * 1000;
 
-  if (interval === 24) return { schedule: `0 ${hourIST} * * *`, label: `every 24h at ${hourIST}:00 IST` };
-  if (interval === 1)  return { schedule: `0 * * * *`,           label: `every 1h` };
-  return { schedule: `0 */${interval} * * *`, label: `every ${interval}h` };
+  if (user.emailIntervalHours === 24) {
+    // Only send at the user's chosen IST hour
+    const istHour = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false });
+    if (parseInt(istHour, 10) !== user.emailSendHourIST) return false;
+  }
+
+  // Haven't been emailed yet OR enough time has passed since last email
+  return !user.lastEmailedAt || (now - new Date(user.lastEmailedAt).getTime()) >= intervalMs;
 };
 
 const sendDigest = async () => {
-  console.log('[EmailDigest] Running...');
   const users = await User.find({ isOnboarded: true, isEmailVerified: true });
+  const due = users.filter(isDue);
 
-  for (const user of users) {
-    // emailed: false is the cache — a job marked true is never sent again
+  if (!due.length) return;
+  console.log(`[EmailDigest] ${due.length} user(s) due`);
+
+  for (const user of due) {
     const newJobs = await UserJob.find({
       userId: user._id,
       emailed: false,
@@ -31,29 +36,21 @@ const sendDigest = async () => {
 
     if (!newJobs.length) continue;
 
-    const jobsData = newJobs.map((uj) => ({ job: uj.jobId, score: uj.score }));
-
     try {
-      await sendJobDigestEmail(user.email, user.name || 'there', jobsData);
-      await UserJob.updateMany(
-        { _id: { $in: newJobs.map((uj) => uj._id) } },
-        { emailed: true }
-      );
+      await sendJobDigestEmail(user.email, user.name || 'there', newJobs.map((uj) => ({ job: uj.jobId, score: uj.score })));
+      await UserJob.updateMany({ _id: { $in: newJobs.map((uj) => uj._id) } }, { emailed: true });
+      await User.updateOne({ _id: user._id }, { lastEmailedAt: new Date() });
       console.log(`[EmailDigest] Sent to ${user.email} — ${newJobs.length} jobs`);
     } catch (err) {
       console.error(`[EmailDigest] Failed for ${user.email}:`, err.message);
     }
   }
-
-  console.log('[EmailDigest] Done');
 };
 
 const startDailyEmailCron = () => {
-  const { schedule, label } = buildCronSchedule();
-
-  cron.schedule(schedule, sendDigest, { timezone: 'Asia/Kolkata' });
-
-  console.log(`[Cron] Email digest scheduled — ${label}`);
+  // Runs every hour on the hour (IST) — per-user schedule is evaluated inside sendDigest
+  cron.schedule('0 * * * *', sendDigest, { timezone: 'Asia/Kolkata' });
+  console.log('[Cron] Email digest scheduled — runs every hour, per-user schedule applied');
 };
 
 module.exports = { startDailyEmailCron };

@@ -14,6 +14,12 @@ const VerifyEmail = () => {
   const { login } = useAuth();
   const email = state?.email || '';
 
+  // Guard: if landed here without an email (direct URL navigation), send to register
+  if (!email) {
+    navigate('/register', { replace: true });
+    return null;
+  }
+
   const handleChange = (index, value) => {
     if (!/^\d?$/.test(value)) return;
     const next = [...digits];

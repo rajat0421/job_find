@@ -3,17 +3,22 @@ const User = require('../models/User');
 const UserJob = require('../models/UserJob');
 const { sendJobDigestEmail } = require('../services/email.service');
 
+const getISTHour = () => {
+  // IST = UTC + 5:30 — avoid toLocaleString which returns "24" at midnight in some runtimes
+  const nowUTC = new Date();
+  const istOffset = 5 * 60 + 30; // minutes
+  const istMinutes = nowUTC.getUTCHours() * 60 + nowUTC.getUTCMinutes() + istOffset;
+  return Math.floor(istMinutes / 60) % 24;
+};
+
 const isDue = (user) => {
   const now = Date.now();
   const intervalMs = user.emailIntervalHours * 60 * 60 * 1000;
 
   if (user.emailIntervalHours === 24) {
-    // Only send at the user's chosen IST hour
-    const istHour = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false });
-    if (parseInt(istHour, 10) !== user.emailSendHourIST) return false;
+    if (getISTHour() !== user.emailSendHourIST) return false;
   }
 
-  // Haven't been emailed yet OR enough time has passed since last email
   return !user.lastEmailedAt || (now - new Date(user.lastEmailedAt).getTime()) >= intervalMs;
 };
 

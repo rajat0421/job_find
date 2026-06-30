@@ -5,18 +5,24 @@ const UserJob = require('../models/UserJob');
 const SKILL_SYNONYMS = {
   react: ['reactjs', 'react.js'],
   node: ['nodejs', 'node.js'],
-  nodejsnode: ['nodejs', 'node.js'],
+  nodejs: ['node', 'node.js'],       // normalizeSkill('Node.js') → 'nodejs'
   mongo: ['mongodb', 'mongoose'],
+  mongodb: ['mongo', 'mongoose'],
   postgres: ['postgresql', 'pg'],
+  postgresql: ['postgres', 'pg'],
   js: ['javascript'],
+  javascript: ['js'],
   ts: ['typescript'],
+  typescript: ['ts'],
   express: ['expressjs', 'express.js'],
   expressjs: ['express', 'express.js'],
   next: ['nextjs', 'next.js'],
+  nextjs: ['next', 'next.js'],
   vue: ['vuejs', 'vue.js'],
+  vuejs: ['vue', 'vue.js'],
   angular: ['angularjs'],
-  aws: ['amazon web services'],
-  gcp: ['google cloud'],
+  aws: ['amazon web services', 'amazon'],
+  gcp: ['google cloud', 'google cloud platform'],
 };
 
 const normalizeSkill = (skill) => skill.toLowerCase().replace(/[.\s-]/g, '');
@@ -35,38 +41,72 @@ const countSkillMatches = (userSkills, jobText) => {
   return { matched, total: userSkills.length };
 };
 
+// Experience hints — each level includes overlapping year ranges
 const EXP_HINTS = {
-  junior: ['junior', 'fresher', 'entry level', 'associate', '0-2', '1-2'],
-  mid: ['mid level', '2-4', '3-5', '2-5'],
-  senior: ['senior', 'lead', 'sr.', '5+', '5-8', '7+'],
+  junior: ['junior', 'fresher', 'entry level', 'entry-level', 'associate', '0-1', '0-2', '1-2', '0 to 2', '1 to 2'],
+  mid:    ['mid level', 'mid-level', '2-4', '3-5', '2-5', '3-6', '2 to 4', '3 to 5', '2 to 5'],
+  senior: ['senior', 'lead', 'sr.', 'principal', 'staff', '5+', '6+', '7+', '5-8', '7-10', '8+'],
+};
+
+// Which experience level a user belongs to, plus the adjacent level for partial credit
+const getUserLevel = (exp) => {
+  if (exp <= 2) return { primary: 'junior', adjacent: 'mid' };
+  if (exp <= 5) return { primary: 'mid',    adjacent: null }; // mid overlaps both; no partial
+  return           { primary: 'senior',  adjacent: 'mid' };
 };
 
 const scoreJob = (user, job) => {
   let score = 0;
   const text = `${job.title} ${job.description || ''}`.toLowerCase();
 
-  // Skill match → up to 50 pts
+  // ── Skills: OR — any match counts. First match = 25 pts, each extra +5, max 50
   if (user.skills?.length) {
-    const { matched, total } = countSkillMatches(user.skills, text);
-    score += Math.round((matched / total) * 50);
+    const { matched } = countSkillMatches(user.skills, text);
+    if (matched > 0) score += Math.min(25 + (matched - 1) * 5, 50);
   }
 
-  // Location match → 20 pts
-  if (user.locations?.length && job.location) {
-    const jobLoc = job.location.toLowerCase();
-    const locMatch = user.locations.some((l) => jobLoc.includes(l.toLowerCase()));
-    const isRemote = jobLoc.includes('remote') || text.includes('remote');
-    if (locMatch || (isRemote && user.remotePreference !== 'office')) score += 20;
+  // ── Location: OR — any preferred location OR remote match = 20 pts
+  if (user.locations?.length || user.remotePreference) {
+    const jobLoc = (job.location || '').toLowerCase();
+    const isRemote = jobLoc.includes('remote') || text.includes('remote') || text.includes('work from home');
+    const locMatch = (user.locations || []).some((l) => jobLoc.includes(l.toLowerCase()));
+    if (locMatch) score += 20;
+    else if (isRemote && user.remotePreference !== 'office') score += 20;
   }
 
-  // Salary match → 15 pts (job max salary >= 80% of user expectation)
-  if (user.salary && job.salaryMax && job.salaryMax >= user.salary * 0.8) score += 15;
+  // ── Salary: fuzzy range — match within 70%–150% of user's expectation
+  if (user.salary) {
+    const low  = user.salary * 0.70; // accept jobs 30% below expectation
+    const high = user.salary * 1.50; // accept jobs up to 50% above expectation
+    const jMax = job.salaryMax;
+    const jMin = job.salaryMin;
 
-  // Experience level hint → 15 pts
-  const level = user.experience <= 2 ? 'junior' : user.experience <= 5 ? 'mid' : 'senior';
-  const hasLevelHint = Object.values(EXP_HINTS).flat().some((h) => text.includes(h));
-  if (EXP_HINTS[level].some((h) => text.includes(h))) score += 15;
-  else if (!hasLevelHint) score += 10; // no level mentioned = neutral
+    if (jMax && jMin) {
+      // Job has full range — check for overlap with user's acceptable band
+      if (jMax >= low && jMin <= high) score += 15;
+    } else if (jMax) {
+      if (jMax >= low) score += 15;
+    } else if (jMin) {
+      if (jMin <= high) score += 15;
+    } else {
+      score += 8; // no salary listed = neutral, give partial credit
+    }
+  } else {
+    score += 8; // user hasn't set expectation = neutral
+  }
+
+  // ── Experience: exact level = 15 pts, adjacent level = 8 pts, no hint = 10 pts
+  const { primary, adjacent } = getUserLevel(user.experience ?? 0);
+  const allHints = Object.values(EXP_HINTS).flat();
+  const hasAnyHint = allHints.some((h) => text.includes(h));
+
+  if (EXP_HINTS[primary].some((h) => text.includes(h))) {
+    score += 15;
+  } else if (adjacent && EXP_HINTS[adjacent].some((h) => text.includes(h))) {
+    score += 8; // adjacent level — nearby experience range
+  } else if (!hasAnyHint) {
+    score += 10; // no experience level mentioned = neutral
+  }
 
   return Math.min(score, 100);
 };

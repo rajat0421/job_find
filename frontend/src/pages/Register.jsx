@@ -6,6 +6,8 @@ const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
 const generatePassword = () =>
   Array.from({ length: 14 }, () => CHARS[Math.floor(Math.random() * CHARS.length)]).join('');
 
+const input = 'w-full bg-[#1a1a28] border border-white/10 rounded-lg px-3.5 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition';
+
 const Register = () => {
   const [form, setForm] = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
@@ -40,82 +42,79 @@ const Register = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-[#0a0a12] px-4">
       <div className="w-full max-w-sm">
 
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-            Job<span className="text-indigo-600">Find</span>
+          <h1 className="text-2xl font-bold text-white tracking-tight">
+            Job<span className="text-violet-400">Find</span>
           </h1>
-          <p className="text-sm text-slate-500 mt-2">Matched jobs delivered to your inbox every morning</p>
+          <p className="text-sm text-slate-500 mt-2">Matched jobs delivered to your inbox</p>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-7 shadow-sm">
-          <h2 className="text-base font-semibold text-slate-900 mb-5">Create your account</h2>
+        <div className="bg-[#12121c] border border-white/10 rounded-2xl p-7">
+          <h2 className="text-base font-semibold text-white mb-5">Create your account</h2>
 
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Email address</label>
+              <label className="block text-sm font-medium text-slate-300 mb-1.5">Email address</label>
               <input
-                type="email"
-                required
+                type="email" required
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                className={input}
                 placeholder="you@example.com"
               />
             </div>
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-sm font-medium text-slate-700">Password</label>
+                <label className="text-sm font-medium text-slate-300">Password</label>
                 <button
                   type="button"
                   onClick={handleGenerate}
-                  className="text-xs font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
+                  className="text-xs font-medium text-violet-400 hover:text-violet-300 transition-colors"
                 >
-                  Generate strong password
+                  Generate strong
                 </button>
               </div>
 
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
-                  required
-                  minLength={6}
+                  required minLength={6}
                   value={form.password}
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
-                  className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 pr-24 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                  className={`${input} pr-24`}
                   placeholder="Min 6 characters"
                 />
                 <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
                   {form.password && (
-                    <button type="button" onClick={handleCopy} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">
+                    <button type="button" onClick={handleCopy} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
                       {copied ? 'Copied' : 'Copy'}
                     </button>
                   )}
-                  <button type="button" onClick={() => setShowPassword(v => !v)} className="text-xs text-slate-400 hover:text-slate-600 transition-colors">
+                  <button type="button" onClick={() => setShowPassword(v => !v)} className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
                     {showPassword ? 'Hide' : 'Show'}
                   </button>
                 </div>
               </div>
             </div>
 
-            {error && <p className="text-sm text-red-500">{error}</p>}
+            {error && <p className="text-sm text-red-400">{error}</p>}
 
             <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-indigo-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-60 mt-1"
+              type="submit" disabled={loading}
+              className="w-full bg-violet-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-violet-700 transition-colors disabled:opacity-50 mt-1"
             >
               {loading ? 'Creating account...' : 'Create account'}
             </button>
           </form>
         </div>
 
-        <p className="text-center text-sm text-slate-500 mt-5">
+        <p className="text-center text-sm text-slate-600 mt-5">
           Already have an account?{' '}
-          <Link to="/login" className="font-medium text-indigo-600 hover:text-indigo-700">Sign in</Link>
+          <Link to="/login" className="font-medium text-violet-400 hover:text-violet-300">Sign in</Link>
         </p>
       </div>
     </div>

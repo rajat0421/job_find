@@ -11,6 +11,9 @@ const REMOTE_OPTIONS = [
   { value: 'office', label: 'In-office' },
 ];
 
+const inputCls = 'w-full bg-[#1a1a28] border border-white/10 rounded-lg px-3.5 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition';
+const labelCls = 'block text-sm font-medium text-slate-300 mb-1.5';
+
 const TagInput = ({ label, placeholder, tags, onChange }) => {
   const [input, setInput] = useState('');
   const add = () => {
@@ -22,26 +25,28 @@ const TagInput = ({ label, placeholder, tags, onChange }) => {
 
   return (
     <div>
-      <label className="block text-sm font-medium text-slate-700 mb-1.5">{label}</label>
+      <label className={labelCls}>{label}</label>
       <div className="flex gap-2">
         <input
-          type="text"
-          value={input}
+          type="text" value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
-          className="flex-1 border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+          className={inputCls}
           placeholder={placeholder}
         />
-        <button type="button" onClick={add} className="px-4 py-2.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors">
+        <button
+          type="button" onClick={add}
+          className="px-4 py-2.5 bg-white/5 border border-white/10 text-slate-300 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors"
+        >
           Add
         </button>
       </div>
       {tags.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-2.5">
           {tags.map(tag => (
-            <span key={tag} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 text-xs font-medium px-2.5 py-1 rounded-md">
+            <span key={tag} className="inline-flex items-center gap-1 bg-violet-600/15 text-violet-300 border border-violet-500/20 text-xs font-medium px-2.5 py-1 rounded-full">
               {tag}
-              <button onClick={() => remove(tag)} className="hover:text-indigo-900 leading-none">&times;</button>
+              <button onClick={() => remove(tag)} className="hover:text-white leading-none">&times;</button>
             </span>
           ))}
         </div>
@@ -95,62 +100,62 @@ const Profile = () => {
   };
 
   if (loading) return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-[#0a0a12]">
       <Navbar />
-      <div className="flex justify-center pt-24 text-slate-400 text-sm">Loading...</div>
+      <div className="flex justify-center pt-24 text-slate-600 text-sm">Loading...</div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-[#0a0a12]">
       <Navbar />
-      <div className="max-w-lg mx-auto px-4 sm:px-6 py-8">
+      <div className="max-w-lg mx-auto px-4 py-10">
         <div className="mb-6">
-          <h1 className="text-xl font-semibold text-slate-900">Profile</h1>
+          <h1 className="text-xl font-bold text-white">Profile</h1>
           <p className="text-sm text-slate-500 mt-0.5">Update your preferences to improve job matches</p>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-7 shadow-sm">
+        <div className="bg-[#12121c] border border-white/10 rounded-2xl p-7">
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Full name</label>
+              <label className={labelCls}>Full name</label>
               <input
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                className={inputCls}
               />
             </div>
 
             <SkillTagInput label="Skills" tags={form.skills} onChange={skills => setForm({ ...form, skills })} />
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Years of experience</label>
+              <label className={labelCls}>Years of experience</label>
               <input
                 type="number" min="0" max="40"
                 value={form.experience}
                 onChange={(e) => setForm({ ...form, experience: e.target.value })}
-                className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                className={inputCls}
               />
             </div>
 
             <TagInput label="Preferred locations" placeholder="e.g. Bangalore" tags={form.locations} onChange={locations => setForm({ ...form, locations })} />
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Expected salary <span className="text-slate-400 font-normal">(LPA)</span>
+              <label className={labelCls}>
+                Expected salary <span className="text-slate-500 font-normal">(LPA)</span>
               </label>
               <input
                 type="number" min="0"
                 value={form.salary}
                 onChange={(e) => setForm({ ...form, salary: e.target.value })}
-                className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                className={inputCls}
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Work preference</label>
+              <label className={labelCls}>Work preference</label>
               <div className="flex gap-2 flex-wrap">
                 {REMOTE_OPTIONS.map(opt => (
                   <button
@@ -159,8 +164,8 @@ const Profile = () => {
                     onClick={() => setForm({ ...form, remotePreference: opt.value })}
                     className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
                       form.remotePreference === opt.value
-                        ? 'bg-indigo-600 text-white border-indigo-600'
-                        : 'border-slate-300 text-slate-600 hover:border-slate-400'
+                        ? 'bg-violet-600 text-white border-violet-600'
+                        : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-200 bg-transparent'
                     }`}
                   >
                     {opt.label}
@@ -169,12 +174,12 @@ const Profile = () => {
               </div>
             </div>
 
-            {error && <p className="text-sm text-red-500">{error}</p>}
-            {success && <p className="text-sm text-emerald-600">Profile updated successfully.</p>}
+            {error && <p className="text-sm text-red-400">{error}</p>}
+            {success && <p className="text-sm text-emerald-400">Profile updated successfully.</p>}
 
             <button
               type="submit" disabled={saving}
-              className="w-full bg-indigo-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-60 mt-1"
+              className="w-full bg-violet-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-violet-700 transition-colors disabled:opacity-50 mt-1"
             >
               {saving ? 'Saving...' : 'Save changes'}
             </button>

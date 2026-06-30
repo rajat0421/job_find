@@ -94,8 +94,8 @@ const SkillTagInput = ({ label, tags, onChange }) => {
 
   return (
     <div>
-      <label className="block text-sm font-medium text-slate-700 mb-1.5">{label}</label>
-      <p className="text-xs text-slate-400 mb-2">Type to search from suggestions, or press Enter to add a custom skill</p>
+      <label className="block text-sm font-medium text-slate-300 mb-1.5">{label}</label>
+      <p className="text-xs text-slate-600 mb-2">Type to search from suggestions, or press Enter to add a custom skill</p>
 
       <div className="relative">
         <input
@@ -106,16 +106,15 @@ const SkillTagInput = ({ label, tags, onChange }) => {
           onKeyDown={handleKeyDown}
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
-          className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+          className="w-full bg-[#1a1a28] border border-white/10 rounded-lg px-3.5 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition"
           placeholder="e.g. Node.js, React, Python..."
           autoComplete="off"
         />
 
-        {/* Dropdown */}
         {suggestions.length > 0 && (
           <ul
             ref={dropdownRef}
-            className="absolute z-20 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-lg shadow-md overflow-hidden"
+            className="absolute z-20 left-0 right-0 top-full mt-1 bg-[#1e1e2d] border border-white/10 rounded-lg shadow-2xl overflow-hidden"
           >
             {suggestions.map((s, i) => (
               <li key={s}>
@@ -124,12 +123,11 @@ const SkillTagInput = ({ label, tags, onChange }) => {
                   onMouseDown={(e) => { e.preventDefault(); add(s); }}
                   className={`w-full text-left px-3.5 py-2.5 text-sm transition-colors ${
                     i === highlighted
-                      ? 'bg-indigo-50 text-indigo-700'
-                      : 'text-slate-700 hover:bg-slate-50'
+                      ? 'bg-violet-600/20 text-violet-300'
+                      : 'text-slate-300 hover:bg-white/5'
                   }`}
                 >
                   {s}
-                  {/* Highlight matching part */}
                 </button>
               </li>
             ))}
@@ -138,9 +136,9 @@ const SkillTagInput = ({ label, tags, onChange }) => {
                 <button
                   type="button"
                   onMouseDown={(e) => { e.preventDefault(); add(input.trim()); }}
-                  className="w-full text-left px-3.5 py-2.5 text-sm text-slate-400 hover:bg-slate-50 border-t border-slate-100 transition-colors"
+                  className="w-full text-left px-3.5 py-2.5 text-sm text-slate-500 hover:bg-white/5 border-t border-white/10 transition-colors"
                 >
-                  Add "<span className="text-slate-600 font-medium">{input.trim()}</span>"
+                  Add "<span className="text-slate-300 font-medium">{input.trim()}</span>"
                 </button>
               </li>
             )}
@@ -148,19 +146,18 @@ const SkillTagInput = ({ label, tags, onChange }) => {
         )}
       </div>
 
-      {/* Tags */}
       {tags.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-2.5">
           {tags.map(tag => (
             <span
               key={tag}
-              className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 text-xs font-medium px-2.5 py-1 rounded-md"
+              className="inline-flex items-center gap-1 bg-violet-600/15 text-violet-300 border border-violet-500/20 text-xs font-medium px-2.5 py-1 rounded-full"
             >
               {tag}
               <button
                 type="button"
                 onClick={() => remove(tag)}
-                className="hover:text-indigo-900 leading-none ml-0.5"
+                className="hover:text-white leading-none ml-0.5"
               >
                 &times;
               </button>

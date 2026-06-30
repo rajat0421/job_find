@@ -11,34 +11,33 @@ const REMOTE_OPTIONS = [
   { value: 'office', label: 'In-office' },
 ];
 
+const inputCls = 'w-full bg-[#1a1a28] border border-white/10 rounded-lg px-3.5 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition';
+const labelCls = 'block text-sm font-medium text-slate-300 mb-1.5';
+
 const TagInput = ({ label, hint, placeholder, tags, onChange }) => {
   const [input, setInput] = useState('');
-
   const add = () => {
     const val = input.trim();
     if (val && !tags.includes(val)) onChange([...tags, val]);
     setInput('');
   };
-
   const remove = (tag) => onChange(tags.filter(t => t !== tag));
 
   return (
     <div>
-      <label className="block text-sm font-medium text-slate-700 mb-1.5">{label}</label>
-      {hint && <p className="text-xs text-slate-400 mb-2">{hint}</p>}
+      <label className={labelCls}>{label}</label>
+      {hint && <p className="text-xs text-slate-600 mb-2">{hint}</p>}
       <div className="flex gap-2">
         <input
-          type="text"
-          value={input}
+          type="text" value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
-          className="flex-1 border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+          className={inputCls}
           placeholder={placeholder}
         />
         <button
-          type="button"
-          onClick={add}
-          className="px-4 py-2.5 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200 transition-colors"
+          type="button" onClick={add}
+          className="px-4 py-2.5 bg-white/5 border border-white/10 text-slate-300 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors"
         >
           Add
         </button>
@@ -46,9 +45,9 @@ const TagInput = ({ label, hint, placeholder, tags, onChange }) => {
       {tags.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-2.5">
           {tags.map(tag => (
-            <span key={tag} className="inline-flex items-center gap-1 bg-indigo-50 text-indigo-700 text-xs font-medium px-2.5 py-1 rounded-md">
+            <span key={tag} className="inline-flex items-center gap-1 bg-violet-600/15 text-violet-300 border border-violet-500/20 text-xs font-medium px-2.5 py-1 rounded-full">
               {tag}
-              <button onClick={() => remove(tag)} className="hover:text-indigo-900 leading-none">&times;</button>
+              <button onClick={() => remove(tag)} className="hover:text-white leading-none">&times;</button>
             </span>
           ))}
         </div>
@@ -91,27 +90,26 @@ const Onboarding = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-12">
+    <div className="min-h-screen bg-[#0a0a12] px-4 py-12">
       <div className="max-w-lg mx-auto">
 
         <div className="mb-8">
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-            Job<span className="text-indigo-600">Find</span>
+          <h1 className="text-2xl font-bold text-white tracking-tight">
+            Job<span className="text-violet-400">Find</span>
           </h1>
           <p className="text-slate-500 text-sm mt-2">Set up your profile so we can match you with the right jobs</p>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-7 shadow-sm">
+        <div className="bg-[#12121c] border border-white/10 rounded-2xl p-7">
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Full name</label>
+              <label className={labelCls}>Full name</label>
               <input
-                type="text"
-                required
+                type="text" required
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                className={inputCls}
                 placeholder="Your full name"
               />
             </div>
@@ -123,12 +121,12 @@ const Onboarding = () => {
             />
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">Years of experience</label>
+              <label className={labelCls}>Years of experience</label>
               <input
                 type="number" min="0" max="40" required
                 value={form.experience}
                 onChange={(e) => setForm({ ...form, experience: e.target.value })}
-                className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                className={inputCls}
                 placeholder="2"
               />
             </div>
@@ -142,20 +140,21 @@ const Onboarding = () => {
             />
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Expected salary <span className="text-slate-400 font-normal">(LPA — optional)</span>
+              <label className={labelCls}>
+                Expected salary{' '}
+                <span className="text-slate-500 font-normal">(LPA — optional)</span>
               </label>
               <input
                 type="number" min="0"
                 value={form.salary}
                 onChange={(e) => setForm({ ...form, salary: e.target.value })}
-                className="w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                className={inputCls}
                 placeholder="e.g. 12"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Work preference</label>
+              <label className={labelCls}>Work preference</label>
               <div className="flex gap-2 flex-wrap">
                 {REMOTE_OPTIONS.map(opt => (
                   <button
@@ -164,8 +163,8 @@ const Onboarding = () => {
                     onClick={() => setForm({ ...form, remotePreference: opt.value })}
                     className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
                       form.remotePreference === opt.value
-                        ? 'bg-indigo-600 text-white border-indigo-600'
-                        : 'border-slate-300 text-slate-600 hover:border-slate-400 hover:text-slate-900'
+                        ? 'bg-violet-600 text-white border-violet-600'
+                        : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-200 bg-transparent'
                     }`}
                   >
                     {opt.label}
@@ -174,12 +173,11 @@ const Onboarding = () => {
               </div>
             </div>
 
-            {error && <p className="text-sm text-red-500">{error}</p>}
+            {error && <p className="text-sm text-red-400">{error}</p>}
 
             <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-indigo-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-60 mt-1"
+              type="submit" disabled={loading}
+              className="w-full bg-violet-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-violet-700 transition-colors disabled:opacity-50 mt-1"
             >
               {loading ? 'Saving...' : 'Save and start matching'}
             </button>

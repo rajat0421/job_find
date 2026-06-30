@@ -14,7 +14,6 @@ const VerifyEmail = () => {
   const { login } = useAuth();
   const email = state?.email || '';
 
-  // Guard: if landed here without an email (direct URL navigation), send to register
   if (!email) {
     navigate('/register', { replace: true });
     return null;
@@ -70,20 +69,21 @@ const VerifyEmail = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-[#0a0a12] px-4">
       <div className="w-full max-w-sm">
 
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-            Job<span className="text-indigo-600">Find</span>
+          <h1 className="text-2xl font-bold text-white tracking-tight">
+            Job<span className="text-violet-400">Find</span>
           </h1>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-2xl p-7 shadow-sm">
+        <div className="bg-[#12121c] border border-white/10 rounded-2xl p-7">
           <div className="mb-6">
-            <h2 className="text-base font-semibold text-slate-900">Check your email</h2>
+            <h2 className="text-base font-semibold text-white">Check your email</h2>
             <p className="text-sm text-slate-500 mt-1">
-              We sent a 6-digit verification code to <span className="font-medium text-slate-700">{email}</span>
+              We sent a 6-digit code to{' '}
+              <span className="font-medium text-slate-300">{email}</span>
             </p>
           </div>
 
@@ -100,26 +100,25 @@ const VerifyEmail = () => {
                   onChange={(e) => handleChange(i, e.target.value)}
                   onKeyDown={(e) => handleKeyDown(i, e)}
                   onPaste={handlePaste}
-                  className="w-11 h-12 text-center text-lg font-semibold border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                  className="w-11 h-12 text-center text-lg font-semibold bg-[#1a1a28] border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition"
                 />
               ))}
             </div>
 
-            {error && <p className="text-sm text-red-500">{error}</p>}
-            {resent && <p className="text-sm text-emerald-600">Verification code resent.</p>}
+            {error && <p className="text-sm text-red-400">{error}</p>}
+            {resent && <p className="text-sm text-emerald-400">Verification code resent.</p>}
 
             <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-indigo-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-indigo-700 transition-colors disabled:opacity-60"
+              type="submit" disabled={loading}
+              className="w-full bg-violet-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-violet-700 transition-colors disabled:opacity-50"
             >
               {loading ? 'Verifying...' : 'Verify email'}
             </button>
           </form>
 
-          <p className="text-sm text-slate-500 mt-4">
+          <p className="text-sm text-slate-600 mt-4">
             Didn't receive a code?{' '}
-            <button onClick={handleResend} className="font-medium text-indigo-600 hover:text-indigo-700 transition-colors">
+            <button onClick={handleResend} className="font-medium text-violet-400 hover:text-violet-300 transition-colors">
               Resend
             </button>
           </p>

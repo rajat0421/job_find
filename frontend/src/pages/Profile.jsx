@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import api from '../services/api';
@@ -175,7 +176,14 @@ const Profile = () => {
             </div>
 
             {error && <p className="text-sm text-red-400">{error}</p>}
-            {success && <p className="text-sm text-emerald-400">Profile updated successfully.</p>}
+            {success && (
+              <p className="text-sm text-emerald-400">
+                Profile updated successfully.{' '}
+                <Link to="/dashboard" className="underline underline-offset-2 hover:text-emerald-300 transition-colors">
+                  Go to home →
+                </Link>
+              </p>
+            )}
 
             <button
               type="submit" disabled={saving}

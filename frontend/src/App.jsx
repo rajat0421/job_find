@@ -14,6 +14,7 @@ import Profile from './pages/Profile';
 import AdminUsers from './pages/AdminUsers';
 import AdminUserDetail from './pages/AdminUserDetail';
 import AdminLogs from './pages/AdminLogs';
+import AdminFeedback from './pages/AdminFeedback';
 import Landing from './pages/Landing';
 
 const App = () => (
@@ -32,6 +33,7 @@ const App = () => (
         <Route path="/admin" element={<AdminRoute><AdminUsers /></AdminRoute>} />
         <Route path="/admin/users/:id" element={<AdminRoute><AdminUserDetail /></AdminRoute>} />
         <Route path="/admin/logs" element={<AdminRoute><AdminLogs /></AdminRoute>} />
+        <Route path="/admin/feedback" element={<AdminRoute><AdminFeedback /></AdminRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

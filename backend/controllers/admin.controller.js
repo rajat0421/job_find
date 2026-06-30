@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const User = require('../models/User');
 const Job = require('../models/Job');
 const UserJob = require('../models/UserJob');
+const RequestLog = require('../models/RequestLog');
 const { scoreJob } = require('../services/jobMatcher.service');
 
 const generateJobHash = (title, company, location) =>
@@ -295,4 +296,25 @@ const rescoreAllUsers = async (_req, res) => {
   }
 };
 
-module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, fixGreenhouseDescriptions, rescoreAllUsers };
+const getLogs = async (req, res) => {
+  try {
+    const { page = 1, limit = 50, action, status, email } = req.query;
+    const filter = {};
+    if (action && action !== 'all') filter.action = action;
+    if (status === 'error') filter.statusCode = { $gte: 400 };
+    if (status === 'success') filter.statusCode = { $lt: 400 };
+    if (email) filter.email = { $regex: email, $options: 'i' };
+
+    const skip = (Number(page) - 1) * Number(limit);
+    const [logs, total] = await Promise.all([
+      RequestLog.find(filter).sort({ timestamp: -1 }).skip(skip).limit(Number(limit)).lean(),
+      RequestLog.countDocuments(filter),
+    ]);
+
+    res.json({ logs, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, fixGreenhouseDescriptions, rescoreAllUsers, getLogs };

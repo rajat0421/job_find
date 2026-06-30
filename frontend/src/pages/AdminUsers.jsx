@@ -29,7 +29,6 @@ const TokenGate = ({ onSuccess }) => {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
         <div className="mb-6 text-center">
-          <div className="text-3xl mb-3">🔐</div>
           <h1 className="text-xl font-bold text-gray-900">Admin Access</h1>
           <p className="text-sm text-gray-500 mt-1">Enter your admin token to continue</p>
         </div>
@@ -117,9 +116,20 @@ const UsersList = () => {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-        <div>
+        <div className="flex items-center gap-4">
           <span className="text-xl font-bold text-blue-600">JobFind</span>
-          <span className="ml-3 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">Admin</span>
+          <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">Admin</span>
+          <nav className="flex items-center gap-1 ml-4">
+            <button className="text-sm font-semibold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg">
+              Users
+            </button>
+            <button
+              onClick={() => navigate('/admin/logs')}
+              className="text-sm text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              API Logs
+            </button>
+          </nav>
         </div>
         <div className="flex items-center gap-3 flex-wrap">
           <button

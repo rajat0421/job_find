@@ -4,6 +4,19 @@ import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import SkillTagInput from '../components/SkillTagInput';
 
+const ROLE_OPTIONS = [
+  'Backend Developer',
+  'Frontend Developer',
+  'Full Stack Developer',
+  'DevOps Engineer',
+  'Data Engineer',
+  'Data Scientist',
+  'Mobile Developer',
+  'QA Engineer',
+  'Cybersecurity',
+  'Product Manager',
+];
+
 const REMOTE_OPTIONS = [
   { value: 'any', label: 'Any' },
   { value: 'remote', label: 'Remote' },
@@ -58,7 +71,7 @@ const TagInput = ({ label, hint, placeholder, tags, onChange }) => {
 
 const Onboarding = () => {
   const [form, setForm] = useState({
-    name: '', skills: [], experience: '',
+    name: '', desiredRole: '', skills: [], experience: '',
     locations: [], salary: '', remotePreference: 'any',
   });
   const [error, setError] = useState('');
@@ -69,6 +82,7 @@ const Onboarding = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.name.trim()) return setError('Full name is required');
+    if (!form.desiredRole) return setError('Select the role you are looking for');
     if (!form.skills.length) return setError('Add at least one skill');
     if (!form.experience) return setError('Years of experience is required');
     if (!form.locations.length) return setError('Add at least one preferred location');
@@ -112,6 +126,26 @@ const Onboarding = () => {
                 className={inputCls}
                 placeholder="Your full name"
               />
+            </div>
+
+            <div>
+              <label className={labelCls}>What role are you looking for?</label>
+              <div className="flex flex-wrap gap-2">
+                {ROLE_OPTIONS.map((role) => (
+                  <button
+                    key={role}
+                    type="button"
+                    onClick={() => setForm({ ...form, desiredRole: role })}
+                    className={`px-3.5 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      form.desiredRole === role
+                        ? 'bg-violet-600 text-white border-violet-600'
+                        : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-200 bg-transparent'
+                    }`}
+                  >
+                    {role}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <SkillTagInput

@@ -4,6 +4,19 @@ import Navbar from '../components/Navbar';
 import api from '../services/api';
 import SkillTagInput from '../components/SkillTagInput';
 
+const ROLE_OPTIONS = [
+  'Backend Developer',
+  'Frontend Developer',
+  'Full Stack Developer',
+  'DevOps Engineer',
+  'Data Engineer',
+  'Data Scientist',
+  'Mobile Developer',
+  'QA Engineer',
+  'Cybersecurity',
+  'Product Manager',
+];
+
 const REMOTE_OPTIONS = [
   { value: 'any', label: 'Any' },
   { value: 'remote', label: 'Remote' },
@@ -58,7 +71,7 @@ const TagInput = ({ label, placeholder, tags, onChange }) => {
 const Profile = () => {
   const { user, login, token } = useAuth();
   const [form, setForm] = useState({
-    name: '', skills: [], experience: '', locations: [], salary: '', remotePreference: 'any',
+    name: '', desiredRole: '', skills: [], experience: '', locations: [], salary: '', remotePreference: 'any',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -70,6 +83,7 @@ const Profile = () => {
       const u = res.data;
       setForm({
         name: u.name || '',
+        desiredRole: u.desiredRole || '',
         skills: u.skills || [],
         experience: u.experience ?? '',
         locations: u.locations || [],
@@ -88,6 +102,7 @@ const Profile = () => {
         ...form,
         experience: Number(form.experience),
         salary: form.salary ? Number(form.salary) * 100000 : undefined,
+        desiredRole: form.desiredRole || null,
       });
       login(token, { ...user, name: form.name });
       setSuccess(true);
@@ -126,6 +141,26 @@ const Profile = () => {
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className={inputCls}
               />
+            </div>
+
+            <div>
+              <label className={labelCls}>Role you are looking for</label>
+              <div className="flex flex-wrap gap-2">
+                {ROLE_OPTIONS.map((role) => (
+                  <button
+                    key={role}
+                    type="button"
+                    onClick={() => setForm({ ...form, desiredRole: role })}
+                    className={`px-3.5 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                      form.desiredRole === role
+                        ? 'bg-violet-600 text-white border-violet-600'
+                        : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-200 bg-transparent'
+                    }`}
+                  >
+                    {role}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <SkillTagInput label="Skills" tags={form.skills} onChange={skills => setForm({ ...form, skills })} />

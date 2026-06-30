@@ -10,6 +10,7 @@ const userSchema = new mongoose.Schema({
   experience: { type: Number },
   locations: [{ type: String }],
   salary: { type: Number },
+  desiredRole: { type: String, default: null },
   remotePreference: { type: String, enum: ['remote', 'hybrid', 'office', 'any'], default: 'any' },
   emailIntervalHours: { type: Number, default: 24 },   // 1 | 5 | 24
   emailSendHourIST:   { type: Number, default: 10 },   // 0-23, only used when interval is 24

@@ -311,7 +311,7 @@ const Landing = () => {
               Contact
             </a>
           </div>
-          <p className="text-xs text-slate-700">© 2025 JobFind</p>
+          <p className="text-xs text-slate-700">© 2026 JobFind</p>
         </div>
       </footer>
 

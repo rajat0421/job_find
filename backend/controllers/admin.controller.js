@@ -48,7 +48,7 @@ const runAdzunaForUser = async (user) => {
 };
 
 // Fetch + score Greenhouse jobs live for a specific user (no DB save)
-const GREENHOUSE_BOARDS = require('../platforms/greenhouse').BOARDS;
+const { BOARDS: GREENHOUSE_BOARDS, stripHtml } = require('../platforms/greenhouse');
 
 const runGreenhouseForUser = async (user) => {
   const allJobs = [];
@@ -70,7 +70,7 @@ const runGreenhouseForUser = async (user) => {
           location: j.location?.name || '',
           salaryMin: null,
           salaryMax: null,
-          description: j.content || '',
+          description: stripHtml(j.content),
           applyLink: j.absolute_url,
         };
         allJobs.push({ job: jobObj, score: scoreJob(user, jobObj) });
@@ -216,4 +216,83 @@ const updateEmailSchedule = async (req, res) => {
   }
 };
 
-module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule };
+// POST /api/admin/fix-greenhouse
+// Strips HTML from all existing Greenhouse job descriptions, then re-scores every UserJob that references them
+const fixGreenhouseDescriptions = async (_req, res) => {
+  try {
+    const ghJobs = await Job.find({ source: 'greenhouse' });
+    let jobsFixed = 0;
+
+    for (const job of ghJobs) {
+      const clean = stripHtml(job.description);
+      if (clean !== job.description) {
+        job.description = clean;
+        await job.save();
+        jobsFixed++;
+      }
+    }
+
+    // Re-score all UserJob records that point to greenhouse jobs
+    const ghJobIds = ghJobs.map((j) => j._id);
+    const userJobs = await UserJob.find({ jobId: { $in: ghJobIds } }).populate('userId').populate('jobId');
+
+    const toDelete = [];
+    const ops = [];
+    for (const uj of userJobs) {
+      if (!uj.jobId || !uj.userId) { toDelete.push(uj._id); continue; }
+      const newScore = scoreJob(uj.userId, uj.jobId);
+      if (newScore === 0) {
+        toDelete.push(uj._id);
+      } else if (newScore !== uj.score) {
+        ops.push({ updateOne: { filter: { _id: uj._id }, update: { $set: { score: newScore } } } });
+      }
+    }
+
+    if (ops.length) await UserJob.bulkWrite(ops);
+    if (toDelete.length) await UserJob.deleteMany({ _id: { $in: toDelete } });
+
+    res.json({ message: 'Done', jobsFixed, rescored: ops.length, removed: toDelete.length });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// POST /api/admin/rescore-all
+// Re-scores ALL UserJob records across all users using the current scoring algorithm
+// Removes records that now score 0 (no skill match)
+const rescoreAllUsers = async (_req, res) => {
+  try {
+    const users = await User.find({ isOnboarded: true, isEmailVerified: true });
+    let totalRescored = 0;
+    let totalRemoved = 0;
+
+    for (const user of users) {
+      const userJobs = await UserJob.find({ userId: user._id }).populate('jobId');
+      const toDelete = [];
+      const ops = [];
+
+      for (const uj of userJobs) {
+        if (!uj.jobId) { toDelete.push(uj._id); continue; }
+        const newScore = scoreJob(user, uj.jobId);
+        if (newScore === 0) {
+          toDelete.push(uj._id);
+        } else if (newScore !== uj.score) {
+          ops.push({ updateOne: { filter: { _id: uj._id }, update: { $set: { score: newScore } } } });
+          totalRescored++;
+        }
+      }
+
+      if (ops.length) await UserJob.bulkWrite(ops);
+      if (toDelete.length) {
+        await UserJob.deleteMany({ _id: { $in: toDelete } });
+        totalRemoved += toDelete.length;
+      }
+    }
+
+    res.json({ message: 'Done', rescored: totalRescored, removed: totalRemoved });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, fixGreenhouseDescriptions, rescoreAllUsers };

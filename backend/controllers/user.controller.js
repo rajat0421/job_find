@@ -3,13 +3,13 @@ const { matchJobsForUser } = require('../services/jobMatcher.service');
 
 const onboard = async (req, res) => {
   try {
-    const { name, skills, experience, locations, salary, remotePreference } = req.body;
+    const { name, skills, experience, locations, salary, remotePreference, desiredRole } = req.body;
     if (!name || !skills?.length || !experience || !locations?.length)
       return res.status(400).json({ message: 'Name, skills, experience and locations are required' });
 
     await User.updateOne(
       { _id: req.user.id },
-      { name, skills, experience, locations, salary, remotePreference, isOnboarded: true }
+      { name, skills, experience, locations, salary, remotePreference, desiredRole: desiredRole || null, isOnboarded: true }
     );
 
     res.json({ message: 'Profile saved. Welcome aboard!' });
@@ -34,13 +34,14 @@ const getProfile = async (req, res) => {
 
 const updateProfile = async (req, res) => {
   try {
-    const { name, skills, experience, locations, salary, remotePreference } = req.body;
+    const { name, skills, experience, locations, salary, remotePreference, desiredRole } = req.body;
     const update = {};
     if (name              !== undefined) update.name              = name;
     if (skills            !== undefined) update.skills            = skills;
     if (experience        !== undefined) update.experience        = experience;
     if (locations         !== undefined) update.locations         = locations;
     if (remotePreference  !== undefined) update.remotePreference  = remotePreference;
+    if (desiredRole       !== undefined) update.desiredRole       = desiredRole || null;
     // salary can be 0 or null (user clearing it) — only skip if not sent at all
     if (salary !== undefined) update.salary = salary || null;
 

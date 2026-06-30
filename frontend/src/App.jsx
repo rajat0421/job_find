@@ -13,6 +13,7 @@ import Dashboard from './pages/Dashboard';
 import Profile from './pages/Profile';
 import AdminUsers from './pages/AdminUsers';
 import AdminUserDetail from './pages/AdminUserDetail';
+import AdminLogs from './pages/AdminLogs';
 
 const HomeRedirect = () => {
   const { isLoggedIn, user } = useAuth();
@@ -36,6 +37,7 @@ const App = () => (
         <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
         <Route path="/admin" element={<AdminRoute><AdminUsers /></AdminRoute>} />
         <Route path="/admin/users/:id" element={<AdminRoute><AdminUserDetail /></AdminRoute>} />
+        <Route path="/admin/logs" element={<AdminRoute><AdminLogs /></AdminRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

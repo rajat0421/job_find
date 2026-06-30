@@ -9,6 +9,20 @@ const generateJobHash = (title, company, location) =>
 // Find a company's token at: https://boards.greenhouse.io/<board_token>
 const BOARDS = require('../data/greenhouseBoards.json');
 
+const stripHtml = (html) => {
+  if (!html) return '';
+  return html
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
 const fetchJobs = async () => {
   let newCount = 0;
 
@@ -36,7 +50,7 @@ const fetchJobs = async () => {
           location,
           salaryMin: null,
           salaryMax: null,
-          description: j.content || '',
+          description: stripHtml(j.content),
           applyLink: j.absolute_url,
           source: 'greenhouse',
           hash,
@@ -53,4 +67,4 @@ const fetchJobs = async () => {
   return newCount;
 };
 
-module.exports = { fetchJobs, BOARDS };
+module.exports = { fetchJobs, BOARDS, stripHtml };

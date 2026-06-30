@@ -55,34 +55,36 @@ const getUserLevel = (exp) => {
   return           { primary: 'senior',  adjacent: 'mid' };
 };
 
+// Cap score at 30 (below 40 threshold) when a junior user's title signals a senior/management role
+const SENIOR_TITLE_PATTERNS = ['senior', 'lead', 'sr.', 'principal', 'staff', 'director', 'manager', 'vp ', 'vice president', 'head of'];
+
 const scoreJob = (user, job) => {
   let score = 0;
   const text = `${job.title} ${job.description || ''}`.toLowerCase();
 
-  // ── Skills: OR — any match counts. First match = 25 pts, each extra +5, max 50
+  // Skills — must match at least 1 if user has skills defined
+  let matched = 0;
   if (user.skills?.length) {
-    const { matched } = countSkillMatches(user.skills, text);
-    if (matched > 0) score += Math.min(25 + (matched - 1) * 5, 50);
+    matched = countSkillMatches(user.skills, text).matched;
+    if (matched === 0) return 0; // no relevant skills → skip entirely
+    score += Math.min(25 + (matched - 1) * 5, 50);
   }
 
-  // ── Location: OR — any preferred location OR remote match = 20 pts
-  if (user.locations?.length || user.remotePreference) {
-    const jobLoc = (job.location || '').toLowerCase();
-    const isRemote = jobLoc.includes('remote') || text.includes('remote') || text.includes('work from home');
-    const locMatch = (user.locations || []).some((l) => jobLoc.includes(l.toLowerCase()));
-    if (locMatch) score += 20;
-    else if (isRemote && user.remotePreference !== 'office') score += 20;
-  }
+  // Location — remote only counts if the job LOCATION FIELD says "remote", not just description text
+  const jobLoc = (job.location || '').toLowerCase();
+  const isRemote = jobLoc.includes('remote');
+  const locMatch = (user.locations || []).some((l) => jobLoc.includes(l.toLowerCase()));
+  if (locMatch) score += 20;
+  else if (isRemote && user.remotePreference !== 'office') score += 20;
 
-  // ── Salary: fuzzy range — match within 70%–150% of user's expectation
+  // Salary: fuzzy range — match within 70%–150% of user's expectation
   if (user.salary) {
-    const low  = user.salary * 0.70; // accept jobs 30% below expectation
-    const high = user.salary * 1.50; // accept jobs up to 50% above expectation
+    const low  = user.salary * 0.70;
+    const high = user.salary * 1.50;
     const jMax = job.salaryMax;
     const jMin = job.salaryMin;
 
     if (jMax && jMin) {
-      // Job has full range — check for overlap with user's acceptable band
       if (jMax >= low && jMin <= high) score += 15;
     } else if (jMax) {
       if (jMax >= low) score += 15;
@@ -95,7 +97,7 @@ const scoreJob = (user, job) => {
     score += 8; // user hasn't set expectation = neutral
   }
 
-  // ── Experience: exact level = 15 pts, adjacent level = 8 pts, no hint = 10 pts
+  // Experience: exact level = 15 pts, adjacent level = 8 pts, no hint = 10 pts
   const { primary, adjacent } = getUserLevel(user.experience ?? 0);
   const allHints = Object.values(EXP_HINTS).flat();
   const hasAnyHint = allHints.some((h) => text.includes(h));
@@ -106,6 +108,14 @@ const scoreJob = (user, job) => {
     score += 8; // adjacent level — nearby experience range
   } else if (!hasAnyHint) {
     score += 10; // no experience level mentioned = neutral
+  }
+
+  // Cap score below threshold when a junior user encounters a senior/management title
+  if (primary === 'junior') {
+    const titleLower = job.title.toLowerCase();
+    if (SENIOR_TITLE_PATTERNS.some((p) => titleLower.includes(p))) {
+      score = Math.min(score, 30);
+    }
   }
 
   return Math.min(score, 100);
@@ -148,6 +158,7 @@ const _matchJobsForUser = async (user, jobs) => {
   for (const job of jobs) {
     if (existingSet.has(job._id.toString())) continue;
     const score = scoreJob(user, job);
+    if (score === 0) continue; // skip zero-score jobs entirely — saves DB space
     toInsert.push({ userId: user._id, jobId: job._id, score });
   }
 

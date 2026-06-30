@@ -69,6 +69,10 @@ const TokenGate = ({ onSuccess }) => {
 const UsersList = () => {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [fixing, setFixing] = useState(false);
+  const [fixResult, setFixResult] = useState(null);
+  const [rescoring, setRescoring] = useState(false);
+  const [rescoreResult, setRescoreResult] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -82,6 +86,34 @@ const UsersList = () => {
     window.location.reload();
   };
 
+  const handleFixGreenhouse = async () => {
+    if (!window.confirm('This will strip raw HTML from all Greenhouse job descriptions and re-score all affected UserJob records. Continue?')) return;
+    setFixing(true);
+    setFixResult(null);
+    try {
+      const r = await adminApi.post('/admin/fix-greenhouse');
+      setFixResult(r.data);
+    } catch (e) {
+      setFixResult({ error: e.response?.data?.message || e.message });
+    } finally {
+      setFixing(false);
+    }
+  };
+
+  const handleRescoreAll = async () => {
+    if (!window.confirm('Re-score all UserJob records for all users using the latest algorithm? This removes irrelevant matches. Continue?')) return;
+    setRescoring(true);
+    setRescoreResult(null);
+    try {
+      const r = await adminApi.post('/admin/rescore-all');
+      setRescoreResult(r.data);
+    } catch (e) {
+      setRescoreResult({ error: e.response?.data?.message || e.message });
+    } finally {
+      setRescoring(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
@@ -89,9 +121,35 @@ const UsersList = () => {
           <span className="text-xl font-bold text-blue-600">JobFind</span>
           <span className="ml-3 text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">Admin</span>
         </div>
-        <button onClick={handleLogout} className="text-sm text-red-500 hover:text-red-700">
-          Exit admin
-        </button>
+        <div className="flex items-center gap-3 flex-wrap">
+          <button
+            onClick={handleFixGreenhouse}
+            disabled={fixing}
+            className="text-xs bg-amber-100 text-amber-700 hover:bg-amber-200 border border-amber-300 px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-60"
+          >
+            {fixing ? 'Fixing...' : 'Fix Greenhouse HTML'}
+          </button>
+          {fixResult && (
+            <span className={`text-xs ${fixResult.error ? 'text-red-500' : 'text-green-600'}`}>
+              {fixResult.error || `${fixResult.jobsFixed} cleaned, ${fixResult.rescored} rescored, ${fixResult.removed} removed`}
+            </span>
+          )}
+          <button
+            onClick={handleRescoreAll}
+            disabled={rescoring}
+            className="text-xs bg-indigo-100 text-indigo-700 hover:bg-indigo-200 border border-indigo-300 px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-60"
+          >
+            {rescoring ? 'Rescoring...' : 'Re-score All Users'}
+          </button>
+          {rescoreResult && (
+            <span className={`text-xs ${rescoreResult.error ? 'text-red-500' : 'text-green-600'}`}>
+              {rescoreResult.error || `${rescoreResult.rescored} updated, ${rescoreResult.removed} removed`}
+            </span>
+          )}
+          <button onClick={handleLogout} className="text-sm text-red-500 hover:text-red-700">
+            Exit admin
+          </button>
+        </div>
       </div>
 
       <div className="max-w-6xl mx-auto px-4 py-8">

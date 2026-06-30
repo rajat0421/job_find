@@ -1,10 +1,4 @@
-import { Navigate } from 'react-router-dom';
-
-// Redirect to /admin (TokenGate) if no token in localStorage
-const AdminRoute = ({ children }) => {
-  const adminToken = localStorage.getItem('adminToken');
-  if (!adminToken) return <Navigate to="/admin" replace />;
-  return children;
-};
+// AdminUsers and AdminUserDetail handle their own token gate internally
+const AdminRoute = ({ children }) => children;
 
 export default AdminRoute;

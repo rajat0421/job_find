@@ -4,7 +4,7 @@ const { matchJobsForUser } = require('../services/jobMatcher.service');
 const onboard = async (req, res) => {
   try {
     const { name, skills, experience, locations, salary, remotePreference, desiredRole } = req.body;
-    if (!name || !skills?.length || !experience || !locations?.length)
+    if (!name || !skills?.length || experience == null || !locations?.length)
       return res.status(400).json({ message: 'Name, skills, experience and locations are required' });
 
     await User.updateOne(

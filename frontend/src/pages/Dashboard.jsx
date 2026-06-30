@@ -77,15 +77,16 @@ const ScheduleSection = ({ currentInterval }) => (
         );
       })}
     </div>
-    {!SCHEDULE_TIERS.find(t => t.premium && currentInterval === t.key) && (
-      <p className="text-[11px] text-slate-600 mt-4">
-        Want faster updates? Email{' '}
-        <a href={`mailto:${ADMIN_EMAIL}`} className="text-slate-500 hover:text-slate-400 underline underline-offset-2">
-          {ADMIN_EMAIL}
-        </a>{' '}
-        to upgrade.
-      </p>
-    )}
+    <p className="text-[15px] text-slate-600 mt-5 text-center">
+      😅 Broke but want hourly alerts?{' '}
+      <a
+        href={`mailto:${ADMIN_EMAIL}?subject=Free%20Premium%20Please%20🙏`}
+        className="text-violet-500 hover:text-violet-400 transition-colors"
+      >
+        Text Rajat
+      </a>
+      . He'll say "let me think about it" and then probably just do it.
+    </p>
   </div>
 );
 

@@ -272,6 +272,22 @@ const Landing = () => {
             </div>
           ))}
         </div>
+
+        {/* Rajat's note */}
+        <div className="mt-10 max-w-xl mx-auto text-center">
+          <p className="text-slate-500 text-sm leading-relaxed">
+            🤫 <span className="text-slate-400 font-medium">Psst</span> - between us, if you want all the premium stuff for free,
+            just slide into{' '}
+            <a
+              href="mailto:rajattalekar5143@gmail.com?subject=Free Premium Please 🙏"
+              className="text-violet-400 hover:text-violet-300 underline underline-offset-2 transition-colors"
+            >
+              Rajat's inbox
+            </a>
+            . He built this thing, he probably feels guilty enough to say yes.
+          </p>
+          <p className="text-slate-600 text-xs mt-2">*(No guarantees. He might be sleeping.)*</p>
+        </div>
       </section>
 
       {/* ── Final CTA ────────────────────────────────────────────────────────── */}

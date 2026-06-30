@@ -140,6 +140,12 @@ const AdminLogs = () => {
             >
               API Logs
             </button>
+            <button
+              onClick={() => navigate('/admin/feedback')}
+              className="text-sm text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors"
+            >
+              Feedback
+            </button>
           </nav>
         </div>
         <button

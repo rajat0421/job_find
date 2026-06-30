@@ -72,4 +72,40 @@ const addReply = async (req, res) => {
   }
 };
 
-module.exports = { submitFeedback, getFeedback, toggleLike, addReply };
+const adminGetFeedback = async (req, res) => {
+  try {
+    const feedbacks = await Feedback.find()
+      .sort({ timestamp: -1 })
+      .limit(200)
+      .select('message name timestamp userId likes replies');
+    res.json(feedbacks);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const deleteFeedback = async (req, res) => {
+  try {
+    const fb = await Feedback.findByIdAndDelete(req.params.id);
+    if (!fb) return res.status(404).json({ message: 'Feedback not found' });
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const deleteReply = async (req, res) => {
+  try {
+    const fb = await Feedback.findByIdAndUpdate(
+      req.params.id,
+      { $pull: { replies: { _id: req.params.replyId } } },
+      { new: true }
+    );
+    if (!fb) return res.status(404).json({ message: 'Feedback not found' });
+    res.json({ message: 'Reply deleted' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { submitFeedback, getFeedback, toggleLike, addReply, adminGetFeedback, deleteFeedback, deleteReply };

@@ -36,7 +36,11 @@ const logger = (req, res, next) => {
     // Response
     console.log(`${statusColor}◀ ${res.statusCode}${reset}  ${dim}${ms}ms${reset}`);
     if (responseBody !== undefined) {
-      console.log(`${yellow}  RES BODY:${reset}`, JSON.stringify(responseBody, null, 2));
+      const sanitizedRes = JSON.parse(JSON.stringify(responseBody));
+      if (sanitizedRes.token)    sanitizedRes.token    = '***';
+      if (sanitizedRes.otp)      sanitizedRes.otp      = '***';
+      if (sanitizedRes.password) sanitizedRes.password = '***';
+      console.log(`${yellow}  RES BODY:${reset}`, JSON.stringify(sanitizedRes, null, 2));
     }
   });
 

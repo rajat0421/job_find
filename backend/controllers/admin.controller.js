@@ -196,8 +196,18 @@ const updateEmailSchedule = async (req, res) => {
   try {
     const { emailIntervalHours, emailSendHourIST } = req.body;
     const update = {};
-    if (emailIntervalHours !== undefined) update.emailIntervalHours = Number(emailIntervalHours);
-    if (emailSendHourIST   !== undefined) update.emailSendHourIST   = Number(emailSendHourIST);
+
+    if (emailIntervalHours !== undefined) {
+      const interval = Number(emailIntervalHours);
+      if (![1, 5, 24].includes(interval)) return res.status(400).json({ message: 'emailIntervalHours must be 1, 5, or 24' });
+      update.emailIntervalHours = interval;
+    }
+
+    if (emailSendHourIST !== undefined) {
+      const hour = Number(emailSendHourIST);
+      if (!Number.isInteger(hour) || hour < 0 || hour > 23) return res.status(400).json({ message: 'emailSendHourIST must be 0–23' });
+      update.emailSendHourIST = hour;
+    }
 
     await User.updateOne({ _id: req.params.id }, update);
     res.json({ message: 'Email schedule updated' });

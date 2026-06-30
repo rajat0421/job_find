@@ -16,6 +16,12 @@ const Navbar = () => {
 
         <nav className="flex items-center gap-5">
           <Link
+            to="/dashboard"
+            className="text-sm text-slate-400 hover:text-white transition-colors font-medium"
+          >
+            Home
+          </Link>
+          <Link
             to="/profile"
             className="text-sm text-slate-400 hover:text-white transition-colors font-medium"
           >

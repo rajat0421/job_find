@@ -122,6 +122,13 @@ const VerifyEmail = () => {
               Resend
             </button>
           </p>
+
+          <div className="mt-4 flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3.5 py-3">
+            <span className="text-amber-400 text-sm mt-px shrink-0">⚠</span>
+            <p className="text-xs text-amber-400/80 leading-relaxed">
+              Email landing in spam? Check your <span className="font-semibold text-amber-400">Spam</span> or <span className="font-semibold text-amber-400">Junk</span> folder — our emails sometimes end up there.
+            </p>
+          </div>
         </div>
       </div>
     </div>

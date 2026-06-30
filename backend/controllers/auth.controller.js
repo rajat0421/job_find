@@ -3,7 +3,7 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 const OtpVerification = require('../models/OtpVerification');
 const { generateOtp, otpExpiry } = require('../utils/otp');
-const { sendOtpEmail } = require('../services/email.service');
+const { sendOtpEmail, sendPasswordResetEmail } = require('../services/email.service');
 const { matchJobsForUser } = require('../services/jobMatcher.service');
 
 const register = async (req, res) => {
@@ -111,4 +111,48 @@ const resendOtp = async (req, res) => {
   }
 };
 
-module.exports = { register, verifyOtp, login, resendOtp };
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: 'Email is required' });
+
+    const user = await User.findOne({ email });
+    // Always respond the same way to prevent email enumeration
+    if (!user || !user.isEmailVerified) {
+      return res.json({ message: 'If this email is registered, an OTP has been sent.' });
+    }
+
+    const otp = generateOtp();
+    await OtpVerification.deleteMany({ email, type: 'password_reset' });
+    await OtpVerification.create({ email, otp, type: 'password_reset', expiresAt: otpExpiry() });
+
+    res.json({ message: 'If this email is registered, an OTP has been sent.' });
+
+    sendPasswordResetEmail(email, otp).catch((err) =>
+      console.error('[Email] Password reset OTP failed for', email, ':', err.message)
+    );
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+    if (!email || !otp || !newPassword) return res.status(400).json({ message: 'Email, OTP and new password are required' });
+    if (newPassword.length < 8) return res.status(400).json({ message: 'Password must be at least 8 characters' });
+
+    const record = await OtpVerification.findOne({ email, otp, type: 'password_reset' });
+    if (!record || record.expiresAt < new Date()) return res.status(400).json({ message: 'Invalid or expired OTP' });
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await User.updateOne({ email }, { password: hashed });
+    await OtpVerification.deleteMany({ email, type: 'password_reset' });
+
+    res.json({ message: 'Password reset successfully. You can now log in.' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { register, verifyOtp, login, resendOtp, forgotPassword, resetPassword };

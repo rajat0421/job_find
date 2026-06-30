@@ -60,4 +60,18 @@ const sendJobDigestEmail = (to, name, jobs) => {
   );
 };
 
-module.exports = { sendOtpEmail, sendJobDigestEmail };
+const sendPasswordResetEmail = (to, otp) =>
+  sendHtmlEmail(
+    to,
+    'Reset your password — JobFind',
+    `
+    <div style="font-family:sans-serif;max-width:480px;margin:auto;padding:32px;">
+      <h2 style="color:#2563eb;margin:0 0 8px;">Reset your password</h2>
+      <p style="color:#555;margin:0 0 24px;">Use this OTP to set a new password. It expires in 10 minutes.</p>
+      <div style="font-size:36px;font-weight:bold;letter-spacing:10px;color:#1d4ed8;background:#eff6ff;padding:20px;border-radius:10px;text-align:center;">${otp}</div>
+      <p style="color:#888;font-size:13px;margin-top:20px;">If you didn't request a password reset, you can safely ignore this email.</p>
+    </div>
+    `
+  );
+
+module.exports = { sendOtpEmail, sendPasswordResetEmail, sendJobDigestEmail };

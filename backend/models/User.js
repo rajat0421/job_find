@@ -11,6 +11,9 @@ const userSchema = new mongoose.Schema({
   locations: [{ type: String }],
   salary: { type: Number },
   remotePreference: { type: String, enum: ['remote', 'hybrid', 'office', 'any'], default: 'any' },
+  emailIntervalHours: { type: Number, default: 24 },   // 1 | 5 | 24
+  emailSendHourIST:   { type: Number, default: 10 },   // 0-23, only used when interval is 24
+  lastEmailedAt:      { type: Date,   default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

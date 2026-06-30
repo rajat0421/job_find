@@ -11,6 +11,8 @@ const ACTION_MAP = {
   'GET /api/user/profile': 'View Profile',
   'PUT /api/user/profile': 'Profile Update',
   'GET /api/jobs/matched': 'View Matched Jobs',
+  'POST /api/feedback': 'Submit Feedback',
+  'GET /api/feedback': 'View Feedback',
 };
 
 const SENSITIVE_KEYS = ['password', 'newPassword', 'token'];

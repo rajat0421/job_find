@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { isAdmin } = require('../middleware/admin.middleware');
 const { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, fixGreenhouseDescriptions, rescoreAllUsers, getLogs } = require('../controllers/admin.controller');
-const { adminGetFeedback, deleteFeedback, deleteReply } = require('../controllers/feedback.controller');
+const { adminGetFeedback, approveFeedback, declineFeedback, deleteFeedback } = require('../controllers/feedback.controller');
 
 router.use(isAdmin);
 
@@ -14,8 +14,9 @@ router.post('/fix-greenhouse', fixGreenhouseDescriptions);
 router.post('/rescore-all', rescoreAllUsers);
 router.get('/logs', getLogs);
 
-router.get('/feedback', adminGetFeedback);
-router.delete('/feedback/:id', deleteFeedback);
-router.delete('/feedback/:id/reply/:replyId', deleteReply);
+router.get('/feedback',                  adminGetFeedback);
+router.patch('/feedback/:id/approve',    approveFeedback);
+router.patch('/feedback/:id/decline',    declineFeedback);
+router.delete('/feedback/:id',           deleteFeedback);
 
 module.exports = router;

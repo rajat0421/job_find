@@ -82,59 +82,34 @@ const timeAgo = (date) => {
   return new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 
-const ReplyBox = ({ feedbackId, onReplyAdded }) => {
-  const [text, setText] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!text.trim()) return;
-    setSubmitting(true);
-    try {
-      const r = await api.post(`/feedback/${feedbackId}/reply`, { message: text.trim() });
-      onReplyAdded(r.data);
-      setText('');
-    } catch {}
-    finally { setSubmitting(false); }
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="mt-3 flex gap-2">
-      <input
-        type="text"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder="Write a reply..."
-        maxLength={300}
-        className="flex-1 bg-[#1a1a28] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white placeholder:text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-500 transition"
-      />
-      <button
-        type="submit"
-        disabled={submitting || !text.trim()}
-        className="text-xs text-violet-400 hover:text-violet-300 font-medium transition-colors disabled:opacity-40 shrink-0"
-      >
-        {submitting ? '...' : 'Reply'}
-      </button>
-    </form>
-  );
-};
-
 const FeedbackCard = ({ fb, currentUserId }) => {
   const [likes, setLikes] = useState(fb.likes || []);
-  const [replies, setReplies] = useState(fb.replies || []);
-  const [showReply, setShowReply] = useState(false);
-  const [liking, setLiking] = useState(false);
+  const [dislikes, setDislikes] = useState(fb.dislikes || []);
+  const [acting, setActing] = useState(false);
 
-  const liked = currentUserId && likes.some(id => id.toString() === currentUserId);
+  const liked    = currentUserId && likes.some(id => id.toString() === currentUserId);
+  const disliked = currentUserId && dislikes.some(id => id.toString() === currentUserId);
 
   const handleLike = async () => {
-    if (liking) return;
-    setLiking(true);
+    if (acting) return;
+    setActing(true);
     try {
       const r = await api.post(`/feedback/${fb._id}/like`);
       setLikes(r.data.likes);
+      setDislikes(r.data.dislikes);
     } catch {}
-    finally { setLiking(false); }
+    finally { setActing(false); }
+  };
+
+  const handleDislike = async () => {
+    if (acting) return;
+    setActing(true);
+    try {
+      const r = await api.post(`/feedback/${fb._id}/dislike`);
+      setLikes(r.data.likes);
+      setDislikes(r.data.dislikes);
+    } catch {}
+    finally { setActing(false); }
   };
 
   return (
@@ -148,49 +123,28 @@ const FeedbackCard = ({ fb, currentUserId }) => {
 
       <p className="text-sm text-slate-300 leading-relaxed">{fb.message}</p>
 
-      {/* Actions */}
       <div className="flex items-center gap-4 mt-3">
         <button
           onClick={handleLike}
-          className={`flex items-center gap-1.5 text-xs transition-colors ${
+          disabled={acting}
+          className={`flex items-center gap-1.5 text-xs transition-colors disabled:opacity-50 ${
             liked ? 'text-violet-400' : 'text-slate-600 hover:text-slate-400'
           }`}
         >
-          <span>{liked ? '♥' : '♡'}</span>
-          <span>{likes.length > 0 ? likes.length : ''}</span>
-          <span>{liked ? 'Liked' : 'Like'}</span>
+          <span>👍</span>
+          {likes.length > 0 && <span>{likes.length}</span>}
         </button>
         <button
-          onClick={() => setShowReply(v => !v)}
-          className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
+          onClick={handleDislike}
+          disabled={acting}
+          className={`flex items-center gap-1.5 text-xs transition-colors disabled:opacity-50 ${
+            disliked ? 'text-red-400' : 'text-slate-600 hover:text-slate-400'
+          }`}
         >
-          {showReply ? 'Cancel' : `Reply${replies.length > 0 ? ` (${replies.length})` : ''}`}
+          <span>👎</span>
+          {dislikes.length > 0 && <span>{dislikes.length}</span>}
         </button>
       </div>
-
-      {/* Replies */}
-      {(showReply || replies.length > 0) && (
-        <div className="mt-3 pl-3 border-l border-white/[0.07] flex flex-col gap-2.5">
-          {replies.map((r) => (
-            <div key={r._id}>
-              <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-[11px] font-medium text-slate-500">{r.name?.split(' ')[0] || 'Anonymous'}</span>
-                <span className="text-[10px] text-slate-700">{timeAgo(r.timestamp)}</span>
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed">{r.message}</p>
-            </div>
-          ))}
-          {showReply && (
-            <ReplyBox
-              feedbackId={fb._id}
-              onReplyAdded={(reply) => {
-                setReplies(prev => [...prev, reply]);
-                setShowReply(false);
-              }}
-            />
-          )}
-        </div>
-      )}
     </div>
   );
 };
@@ -216,11 +170,10 @@ const FeedbackSection = ({ currentUserId }) => {
     setSubmitting(true);
     setError('');
     try {
-      const r = await api.post('/feedback', { message: message.trim() });
-      setFeedbacks(prev => [r.data, ...prev]);
+      await api.post('/feedback', { message: message.trim() });
       setMessage('');
       setSubmitted(true);
-      setTimeout(() => setSubmitted(false), 3000);
+      setTimeout(() => setSubmitted(false), 5000);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to send feedback');
     } finally {
@@ -253,7 +206,7 @@ const FeedbackSection = ({ currentUserId }) => {
             {submitting ? 'Sending...' : 'Send feedback'}
           </button>
         </div>
-        {submitted && <p className="text-xs text-emerald-400 mt-2">Thanks! Your feedback has been submitted.</p>}
+        {submitted && <p className="text-xs text-emerald-400 mt-2">Thanks! Your feedback is pending review and will appear here once approved.</p>}
         {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
       </form>
 

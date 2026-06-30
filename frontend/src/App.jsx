@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import AdminRoute from './components/AdminRoute';
 
@@ -14,19 +14,13 @@ import Profile from './pages/Profile';
 import AdminUsers from './pages/AdminUsers';
 import AdminUserDetail from './pages/AdminUserDetail';
 import AdminLogs from './pages/AdminLogs';
-
-const HomeRedirect = () => {
-  const { isLoggedIn, user } = useAuth();
-  if (!isLoggedIn) return <Navigate to="/register" replace />;
-  if (!user?.isOnboarded) return <Navigate to="/onboarding" replace />;
-  return <Navigate to="/dashboard" replace />;
-};
+import Landing from './pages/Landing';
 
 const App = () => (
   <AuthProvider>
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<HomeRedirect />} />
+        <Route path="/" element={<Landing />} />
         <Route path="/register" element={<Register />} />
         <Route path="/verify-email" element={<VerifyEmail />} />
         <Route path="/login" element={<Login />} />

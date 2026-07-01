@@ -52,6 +52,14 @@ const ROLE_KEYWORDS = {
   'QA Engineer':          ['qa engineer', 'quality assurance', 'test engineer', 'sdet', 'automation engineer', 'quality engineer', 'software test'],
   'Cybersecurity':        ['security engineer', 'security analyst', 'penetration', 'infosec', 'cybersecurity', 'information security', 'appsec', 'devsecops'],
   'Product Manager':      ['product manager', 'product owner', 'product lead', 'product director', 'group product manager', 'senior product manager'],
+  'Software Engineer':    ['software engineer', 'software developer', 'sde', 'swe', 'application developer', 'application engineer'],
+  'ML Engineer':          ['machine learning engineer', 'ml engineer', 'deep learning engineer', 'research engineer', 'mlops engineer'],
+  'AI Engineer':          ['ai engineer', 'artificial intelligence engineer', 'generative ai', 'llm engineer', 'prompt engineer', 'applied ai'],
+  'Cloud Architect':      ['cloud architect', 'solutions architect', 'cloud engineer', 'aws architect', 'azure architect', 'gcp architect'],
+  'Blockchain Developer': ['blockchain developer', 'blockchain engineer', 'web3 developer', 'smart contract', 'solidity developer', 'defi developer'],
+  'Embedded Engineer':    ['embedded engineer', 'embedded developer', 'firmware engineer', 'rtos', 'iot engineer', 'embedded systems'],
+  'Tech Lead':            ['tech lead', 'technical lead', 'lead engineer', 'lead developer', 'engineering lead', 'lead software'],
+  'Engineering Manager':  ['engineering manager', 'head of engineering', 'vp of engineering', 'vp engineering', 'director of engineering'],
 };
 
 // Applied only when user has NOT set a desiredRole — filters obvious non-engineering titles
@@ -85,10 +93,11 @@ const scoreJob = (user, job) => {
   const titleLower = job.title.toLowerCase();
 
   // ── Step 1: Role filter / blacklist ─────────────────────────────────────────
-  if (user.desiredRole) {
-    // User has specified a role → job title MUST match it
-    const keywords = ROLE_KEYWORDS[user.desiredRole] || [];
-    if (!keywords.some((k) => titleLower.includes(k))) return 0;
+  const roles = user.desiredRoles?.length ? user.desiredRoles : (user.desiredRole ? [user.desiredRole] : []);
+  if (roles.length) {
+    // User has specified roles → job title MUST match at least one
+    const allKeywords = roles.flatMap(r => ROLE_KEYWORDS[r] || [r.toLowerCase()]);
+    if (!allKeywords.some((k) => titleLower.includes(k))) return 0;
   } else {
     // No role specified → at least filter out obvious non-engineering titles
     if (TITLE_BLACKLIST.some((term) => titleLower.includes(term))) return 0;
@@ -97,7 +106,7 @@ const scoreJob = (user, job) => {
   let score = 0;
 
   // ── Step 2: Role score (40 if role set, 20 neutral) ─────────────────────────
-  score += user.desiredRole ? 40 : 20;
+  score += roles.length ? 40 : 20;
 
   // ── Step 3: Skill matching (up to 30 pts, must match ≥1 if user has skills) ─
   const text = `${job.title} ${job.description || ''}`.toLowerCase();

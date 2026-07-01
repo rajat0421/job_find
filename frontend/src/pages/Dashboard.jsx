@@ -247,6 +247,7 @@ const FeedbackSection = ({ currentUserId }) => {
 const Dashboard = () => {
   const { user } = useAuth();
   const [profile, setProfile] = useState(null);
+  const [togglingEmail, setTogglingEmail] = useState(false);
 
   useEffect(() => {
     api.get('/user/profile').then(r => setProfile(r.data)).catch(() => {});
@@ -262,6 +263,18 @@ const Dashboard = () => {
     return `Daily at ${h}:00 ${ampm} IST`;
   };
 
+  const handleToggleEmail = async () => {
+    if (togglingEmail) return;
+    setTogglingEmail(true);
+    try {
+      const r = await api.post('/user/unsubscribe');
+      setProfile(p => ({ ...p, emailPaused: r.data.emailPaused }));
+    } catch {}
+    finally { setTogglingEmail(false); }
+  };
+
+  const paused = profile?.emailPaused;
+
   return (
     <div className="min-h-screen bg-[#0a0a12]">
       <Navbar />
@@ -273,18 +286,23 @@ const Dashboard = () => {
           <p className="text-xs text-violet-400 font-semibold uppercase tracking-widest mb-3">JobFind</p>
           <h1 className="text-3xl font-bold text-white mb-3 leading-tight">
             Hi {user?.name || 'there'}<br />
-            <span className="text-slate-400 font-normal text-2xl">we're finding jobs for you.</span>
+            <span className="text-slate-400 font-normal text-2xl">
+              {paused ? 'job emails are paused.' : 'we\'re finding jobs for you.'}
+            </span>
           </h1>
           <p className="text-slate-500 text-sm">
-            Job matches are emailed to{' '}
-            <span className="text-slate-300 font-medium">{user?.email}</span>
+            {paused ? (
+              <>Emails to <span className="text-slate-300 font-medium">{user?.email}</span> are off.</>
+            ) : (
+              <>Job matches are emailed to <span className="text-slate-300 font-medium">{user?.email}</span></>
+            )}
           </p>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3 mb-6">
-          <StatCard label="Status" value="Active" highlight />
-          <StatCard label="Emails" value={getScheduleText()} />
+          <StatCard label="Status" value={paused ? 'Paused' : 'Active'} highlight={!paused} />
+          <StatCard label="Emails" value={paused ? 'Off' : getScheduleText()} />
           <StatCard label="Sources" value="90+ companies" />
         </div>
 
@@ -351,7 +369,24 @@ const Dashboard = () => {
         {/* Feedback */}
         <FeedbackSection currentUserId={profile?._id} />
 
-        <p className="text-center text-xs text-slate-700 mt-10">
+        {/* Unsubscribe */}
+        {profile && (
+          <div className="text-center mt-6">
+            <button
+              onClick={handleToggleEmail}
+              disabled={togglingEmail}
+              className="text-xs text-slate-600 hover:text-slate-400 underline underline-offset-2 transition-colors disabled:opacity-50"
+            >
+              {togglingEmail
+                ? '...'
+                : paused
+                ? 'Resume job emails'
+                : 'Stop receiving job emails'}
+            </button>
+          </div>
+        )}
+
+        <p className="text-center text-xs text-slate-700 mt-4">
           Check your spam folder if you haven't received anything yet
         </p>
       </div>

@@ -23,7 +23,7 @@ const isDue = (user) => {
 };
 
 const sendDigest = async () => {
-  const users = await User.find({ isOnboarded: true, isEmailVerified: true });
+  const users = await User.find({ isOnboarded: true, isEmailVerified: true, emailPaused: { $ne: true } });
   const due = users.filter(isDue);
 
   if (!due.length) return;

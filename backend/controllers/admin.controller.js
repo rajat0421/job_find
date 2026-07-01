@@ -11,12 +11,18 @@ const generateJobHash = (title, company, location) =>
 
 // Fetch + score Adzuna jobs live for a specific user (no DB save)
 const runAdzunaForUser = async (user) => {
+  const roles = user.desiredRoles?.length ? user.desiredRoles : (user.desiredRole ? [user.desiredRole] : []);
+  const what = roles.length
+    ? roles.slice(0, 2).join(' ')
+    : (user.skills?.slice(0, 3).join(' ') || 'software developer');
+  const where = user.locations?.[0] || 'India';
+
   const params = {
     app_id: process.env.ADZUNA_APP_ID,
     app_key: process.env.ADZUNA_APP_KEY,
     results_per_page: 50,
-    what: 'software engineer developer',
-    where: 'India',
+    what,
+    where,
   };
 
   const url = 'https://api.adzuna.com/v1/api/jobs/in/search/1';

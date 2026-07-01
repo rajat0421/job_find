@@ -201,4 +201,100 @@ const _matchJobsForUser = async (user, jobs) => {
   return toInsert.length;
 };
 
-module.exports = { matchJobsForAllUsers, matchJobsForUser, scoreJob };
+const scoreJobWithBreakdown = (user, job) => {
+  const titleLower = job.title.toLowerCase();
+  const text = `${job.title} ${job.description || ''}`.toLowerCase();
+  const breakdown = {};
+
+  // ── Role ────────────────────────────────────────────────────────────────────
+  const roles = user.desiredRoles?.length ? user.desiredRoles : (user.desiredRole ? [user.desiredRole] : []);
+  if (roles.length) {
+    const allKeywords = roles.flatMap(r => ROLE_KEYWORDS[r] || [r.toLowerCase()]);
+    const hit = allKeywords.find(k => titleLower.includes(k));
+    if (!hit) return { score: 0, breakdown: { role: { score: 0, max: 40, detail: `Title did not match any keyword for: ${roles.join(', ')}` } } };
+    breakdown.role = { score: 40, max: 40, detail: `"${hit}" matched in title → role: ${roles.join(', ')}` };
+  } else {
+    if (TITLE_BLACKLIST.some(t => titleLower.includes(t))) return { score: 0, breakdown: { role: { score: 0, max: 40, detail: 'Non-engineering title (blacklisted) — no role set' } } };
+    breakdown.role = { score: 20, max: 40, detail: 'No role set — neutral score' };
+  }
+  let score = breakdown.role.score;
+
+  // ── Skills ──────────────────────────────────────────────────────────────────
+  if (user.skills?.length) {
+    const matched = [];
+    for (const skill of user.skills) {
+      const n = normalizeSkill(skill);
+      if (text.includes(n)) { matched.push(skill); continue; }
+      if ((SKILL_SYNONYMS[n] || []).some(s => text.includes(s))) matched.push(skill);
+    }
+    if (matched.length === 0) return { score: 0, breakdown: { ...breakdown, skills: { score: 0, max: 30, detail: `0/${user.skills.length} skills found — filtered out` } } };
+    const pts = Math.min(15 + (matched.length - 1) * 5, 30);
+    breakdown.skills = { score: pts, max: 30, matched, total: user.skills.length, detail: `${matched.length}/${user.skills.length} matched: ${matched.join(', ')}` };
+    score += pts;
+  } else {
+    breakdown.skills = { score: 0, max: 30, detail: 'No skills on profile' };
+  }
+
+  // ── Location ─────────────────────────────────────────────────────────────────
+  const jobLoc = (job.location || '').toLowerCase();
+  const isRemote = jobLoc.includes('remote');
+  const locHit = (user.locations || []).find(l => jobLoc.includes(l.toLowerCase()));
+  if (locHit) {
+    breakdown.location = { score: 10, max: 10, detail: `Exact match — "${locHit}" in job location` };
+    score += 10;
+  } else if (isRemote && user.remotePreference !== 'office') {
+    breakdown.location = { score: 8, max: 10, detail: 'Job is remote — near match' };
+    score += 8;
+  } else {
+    breakdown.location = { score: 0, max: 10, detail: `No match — job: "${job.location || 'unspecified'}", user wants: ${user.locations?.join(', ') || 'any'}` };
+  }
+
+  // ── Salary ───────────────────────────────────────────────────────────────────
+  if (user.salary) {
+    const low = user.salary * 0.70, high = user.salary * 1.50;
+    const { salaryMax: jMax, salaryMin: jMin } = job;
+    const fmt = v => `₹${(v / 100000).toFixed(1)}L`;
+    if (jMax && jMin) {
+      if (jMax >= low && jMin <= high) { breakdown.salary = { score: 5, max: 5, detail: `Job ${fmt(jMin)}–${fmt(jMax)} fits expectation` }; score += 5; }
+      else { breakdown.salary = { score: 0, max: 5, detail: `Job ${fmt(jMin)}–${fmt(jMax)} outside user expectation ${fmt(user.salary)}` }; }
+    } else if (jMax) {
+      if (jMax >= low) { breakdown.salary = { score: 5, max: 5, detail: `Job max ${fmt(jMax)} meets expectation` }; score += 5; }
+      else { breakdown.salary = { score: 0, max: 5, detail: `Job max ${fmt(jMax)} below expectation` }; }
+    } else if (jMin) {
+      if (jMin <= high) { breakdown.salary = { score: 5, max: 5, detail: `Job min ${fmt(jMin)} within range` }; score += 5; }
+      else { breakdown.salary = { score: 0, max: 5, detail: `Job min ${fmt(jMin)} above expectation` }; }
+    } else { breakdown.salary = { score: 3, max: 5, detail: 'No salary listed — neutral' }; score += 3; }
+  } else {
+    breakdown.salary = { score: 3, max: 5, detail: 'User has no salary expectation — neutral' }; score += 3;
+  }
+
+  // ── Experience ───────────────────────────────────────────────────────────────
+  const { primary, adjacent } = getUserLevel(user.experience ?? 0);
+  const allHints = Object.values(EXP_HINTS).flat();
+  const hasAnyHint = allHints.some(h => text.includes(h));
+  if (EXP_HINTS[primary].some(h => text.includes(h))) {
+    const hit = EXP_HINTS[primary].find(h => text.includes(h));
+    breakdown.experience = { score: 15, max: 15, detail: `Level match — "${hit}" in job (user is ${primary})` };
+    score += 15;
+  } else if (adjacent && EXP_HINTS[adjacent].some(h => text.includes(h))) {
+    const hit = EXP_HINTS[adjacent].find(h => text.includes(h));
+    breakdown.experience = { score: 8, max: 15, detail: `Adjacent level — "${hit}" in job (user is ${primary})` };
+    score += 8;
+  } else if (!hasAnyHint) {
+    breakdown.experience = { score: 7, max: 15, detail: 'No experience level mentioned — neutral' };
+    score += 7;
+  } else {
+    breakdown.experience = { score: 0, max: 15, detail: `Wrong level — job mentions different experience tier (user is ${primary})` };
+  }
+
+  // ── Junior cap ───────────────────────────────────────────────────────────────
+  if (primary === 'junior' && SENIOR_TITLE_PATTERNS.some(p => titleLower.includes(p))) {
+    score = Math.min(score, 30);
+    breakdown.cap = 'Capped at 30 — junior user, senior title';
+  }
+
+  const total = Math.min(score, 100);
+  return { score: total, breakdown: { ...breakdown, total } };
+};
+
+module.exports = { matchJobsForAllUsers, matchJobsForUser, scoreJob, scoreJobWithBreakdown };

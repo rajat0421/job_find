@@ -17,6 +17,7 @@ const userSchema = new mongoose.Schema({
   emailSendHourIST:   { type: Number, default: 10 },   // 0-23, only used when interval is 24
   lastEmailedAt:      { type: Date,   default: null },
   emailPaused:        { type: Boolean, default: false },
+  qualification:      { type: String, default: null },
 }, { timestamps: true });
 
 module.exports = mongoose.model('User', userSchema);

@@ -21,7 +21,7 @@ const StatCard = ({ label, value, highlight }) => (
 
 const ScheduleSection = ({ currentInterval }) => (
   <div className="bg-[#12121c] border border-white/10 rounded-2xl p-6 mb-4">
-    <p className="text-[11px] text-slate-500 uppercase tracking-widest mb-5">Digest Frequency</p>
+    <p className="text-[11px] text-slate-500 uppercase tracking-widest mb-5">How often we email you</p>
     <div className="grid grid-cols-3 gap-3">
       {SCHEDULE_TIERS.map((tier) => {
         const isActive = currentInterval === tier.key;
@@ -48,7 +48,7 @@ const ScheduleSection = ({ currentInterval }) => (
             <p className="text-slate-500 text-xs mb-3">{tier.sublabel}</p>
             {tier.premium ? (
               <a
-                href={`mailto:${ADMIN_EMAIL}?subject=JobFind%20Premium%20—%20${encodeURIComponent(tier.label)}%20digest&body=Hi%2C%20I'd%20like%20to%20upgrade%20my%20JobFind%20digest%20frequency%20to%20${encodeURIComponent(tier.label)}.`}
+                href={`mailto:${ADMIN_EMAIL}?subject=JobFind%20Premium%20—%20${encodeURIComponent(tier.label)}%20emails&body=Hi%2C%20I'd%20like%20to%20get%20job%20alerts%20${encodeURIComponent(tier.label)}%20on%20JobFind.`}
                 className="text-[11px] text-violet-400 hover:text-violet-300 font-medium transition-colors"
               >
                 Contact admin →
@@ -273,10 +273,10 @@ const Dashboard = () => {
           <p className="text-xs text-violet-400 font-semibold uppercase tracking-widest mb-3">JobFind</p>
           <h1 className="text-3xl font-bold text-white mb-3 leading-tight">
             Hi {user?.name || 'there'}<br />
-            <span className="text-slate-400 font-normal text-2xl">your job digest is active.</span>
+            <span className="text-slate-400 font-normal text-2xl">we're finding jobs for you.</span>
           </h1>
           <p className="text-slate-500 text-sm">
-            Matched jobs are sent to{' '}
+            Job matches are emailed to{' '}
             <span className="text-slate-300 font-medium">{user?.email}</span>
           </p>
         </div>
@@ -284,7 +284,7 @@ const Dashboard = () => {
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3 mb-6">
           <StatCard label="Status" value="Active" highlight />
-          <StatCard label="Digest" value={getScheduleText()} />
+          <StatCard label="Emails" value={getScheduleText()} />
           <StatCard label="Sources" value="90+ companies" />
         </div>
 
@@ -300,7 +300,7 @@ const Dashboard = () => {
             {[
               'We scan Adzuna + 90+ Greenhouse company boards continuously',
               'Jobs are scored against your skills, location, experience and salary',
-              'The top matches land in your inbox on your schedule',
+              'The best matching jobs are emailed to you automatically',
             ].map((step, i) => (
               <div key={i} className="flex items-start gap-3">
                 <span className="shrink-0 w-5 h-5 rounded-full bg-violet-600/20 border border-violet-500/30 text-violet-400 text-[10px] flex items-center justify-center font-bold mt-0.5">

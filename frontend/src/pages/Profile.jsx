@@ -4,9 +4,37 @@ import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import api from '../services/api';
 import SkillTagInput from '../components/SkillTagInput';
+import RoleSelector from '../components/RoleSelector';
+
+const EXPERIENCE_OPTIONS = [
+  { value: 0,  label: 'Fresher' },
+  { value: 1,  label: '1 Year' },
+  { value: 2,  label: '2 Years' },
+  { value: 3,  label: '3 Years' },
+  { value: 4,  label: '4 Years' },
+  { value: 5,  label: '5 Years' },
+  { value: 6,  label: '6 Years' },
+  { value: 7,  label: '7 Years' },
+  { value: 8,  label: '8 Years' },
+  { value: 9,  label: '9 Years' },
+  { value: 10, label: '10+ Years' },
+];
+
+const QUALIFICATION_OPTIONS = [
+  'B.E / B.Tech',
+  'M.Tech',
+  'BCA',
+  'MCA',
+  'B.Sc',
+  'M.Sc',
+  'MBA',
+  'Diploma',
+  'PhD',
+  'Other',
+];
 
 const REMOTE_OPTIONS = [
-  { value: 'any', label: 'Any' },
+  { value: 'any',    label: 'Any' },
   { value: 'remote', label: 'Remote' },
   { value: 'hybrid', label: 'Hybrid' },
   { value: 'office', label: 'In-office' },
@@ -14,6 +42,9 @@ const REMOTE_OPTIONS = [
 
 const inputCls = 'w-full bg-[#1a1a28] border border-white/10 rounded-lg px-3.5 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition';
 const labelCls = 'block text-sm font-medium text-slate-300 mb-1.5';
+const chipBase = 'px-3.5 py-2 rounded-lg text-sm font-medium border transition-colors';
+const chipActive = 'bg-violet-600 text-white border-violet-600';
+const chipIdle = 'border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-200 bg-transparent';
 
 const TagInput = ({ label, placeholder, tags, onChange }) => {
   const [input, setInput] = useState('');
@@ -59,7 +90,8 @@ const TagInput = ({ label, placeholder, tags, onChange }) => {
 const Profile = () => {
   const { user, login, token } = useAuth();
   const [form, setForm] = useState({
-    name: '', skills: [], experience: '', locations: [], salary: '', remotePreference: 'any',
+    name: '', desiredRoles: [], skills: [], experience: null,
+    qualification: '', locations: [], salary: '', remotePreference: 'any',
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -71,8 +103,10 @@ const Profile = () => {
       const u = res.data;
       setForm({
         name: u.name || '',
+        desiredRoles: u.desiredRoles?.length ? u.desiredRoles : (u.desiredRole ? [u.desiredRole] : []),
         skills: u.skills || [],
-        experience: u.experience ?? '',
+        experience: u.experience ?? null,
+        qualification: u.qualification || '',
         locations: u.locations || [],
         salary: u.salary ? u.salary / 100000 : '',
         remotePreference: u.remotePreference || 'any',
@@ -87,7 +121,6 @@ const Profile = () => {
     try {
       await api.put('/user/profile', {
         ...form,
-        experience: Number(form.experience),
         salary: form.salary ? Number(form.salary) * 100000 : undefined,
       });
       login(token, { ...user, name: form.name });
@@ -129,16 +162,46 @@ const Profile = () => {
               />
             </div>
 
+            <RoleSelector
+              selected={form.desiredRoles}
+              onChange={(desiredRoles) => setForm({ ...form, desiredRoles })}
+            />
+
             <SkillTagInput label="Skills" tags={form.skills} onChange={skills => setForm({ ...form, skills })} />
 
             <div>
               <label className={labelCls}>Years of experience</label>
-              <input
-                type="number" min="0" max="40"
-                value={form.experience}
-                onChange={(e) => setForm({ ...form, experience: e.target.value })}
-                className={inputCls}
-              />
+              <div className="flex flex-wrap gap-2">
+                {EXPERIENCE_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setForm({ ...form, experience: opt.value })}
+                    className={`${chipBase} ${form.experience === opt.value ? chipActive : chipIdle}`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className={labelCls}>
+                Highest qualification{' '}
+                <span className="text-slate-500 font-normal">(optional)</span>
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {QUALIFICATION_OPTIONS.map(q => (
+                  <button
+                    key={q}
+                    type="button"
+                    onClick={() => setForm({ ...form, qualification: form.qualification === q ? '' : q })}
+                    className={`${chipBase} ${form.qualification === q ? chipActive : chipIdle}`}
+                  >
+                    {q}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <TagInput label="Preferred locations" placeholder="e.g. Bangalore" tags={form.locations} onChange={locations => setForm({ ...form, locations })} />
@@ -163,11 +226,7 @@ const Profile = () => {
                     key={opt.value}
                     type="button"
                     onClick={() => setForm({ ...form, remotePreference: opt.value })}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                      form.remotePreference === opt.value
-                        ? 'bg-violet-600 text-white border-violet-600'
-                        : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-200 bg-transparent'
-                    }`}
+                    className={`${chipBase} ${form.remotePreference === opt.value ? chipActive : chipIdle}`}
                   >
                     {opt.label}
                   </button>

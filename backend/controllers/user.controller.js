@@ -3,7 +3,7 @@ const { matchJobsForUser } = require('../services/jobMatcher.service');
 
 const onboard = async (req, res) => {
   try {
-    const { name, skills, experience, locations, salary, remotePreference, desiredRoles } = req.body;
+    const { name, skills, experience, locations, salary, remotePreference, desiredRoles, qualification } = req.body;
     if (!name || !skills?.length || experience == null || !locations?.length)
       return res.status(400).json({ message: 'Name, skills, experience and locations are required' });
 
@@ -13,6 +13,7 @@ const onboard = async (req, res) => {
         name, skills, experience, locations, salary, remotePreference,
         desiredRoles: desiredRoles || [],
         desiredRole: desiredRoles?.[0] || null,
+        qualification: qualification || null,
         isOnboarded: true,
       }
     );
@@ -39,13 +40,14 @@ const getProfile = async (req, res) => {
 
 const updateProfile = async (req, res) => {
   try {
-    const { name, skills, experience, locations, salary, remotePreference, desiredRoles } = req.body;
+    const { name, skills, experience, locations, salary, remotePreference, desiredRoles, qualification } = req.body;
     const update = {};
     if (name              !== undefined) update.name              = name;
     if (skills            !== undefined) update.skills            = skills;
     if (experience        !== undefined) update.experience        = experience;
     if (locations         !== undefined) update.locations         = locations;
     if (remotePreference  !== undefined) update.remotePreference  = remotePreference;
+    if (qualification     !== undefined) update.qualification     = qualification || null;
     if (desiredRoles      !== undefined) {
       update.desiredRoles = desiredRoles || [];
       update.desiredRole  = desiredRoles?.[0] || null;

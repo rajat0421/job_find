@@ -181,7 +181,7 @@ const UsersList = () => {
             <table className="w-full text-sm">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  {['Email', 'Name', 'Skills', 'Exp', 'Location', 'Status', 'Jobs Matched', 'Top Score', 'Joined', ''].map((h) => (
+                  {['Email', 'Name', 'Roles', 'Skills', 'Exp', 'Location', 'Status', 'Jobs Matched', 'Top Score', 'Joined', ''].map((h) => (
                     <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">
                       {h}
                     </th>
@@ -193,6 +193,13 @@ const UsersList = () => {
                   <tr key={u._id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3 font-medium text-gray-900 whitespace-nowrap">{u.email}</td>
                     <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{u.name || '—'}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col gap-1 max-w-[160px]">
+                        {u.desiredRoles?.length ? u.desiredRoles.map((r) => (
+                          <span key={r} className="bg-purple-50 text-purple-700 text-xs px-2 py-0.5 rounded-full whitespace-nowrap w-fit">{r}</span>
+                        )) : <span className="text-gray-400 text-xs">—</span>}
+                      </div>
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1 max-w-[180px]">
                         {u.skills?.slice(0, 3).map((s) => (

@@ -52,4 +52,15 @@ const updateProfile = async (req, res) => {
   }
 };
 
-module.exports = { onboard, getProfile, updateProfile };
+const toggleEmailPause = async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select('emailPaused');
+    const next = !user.emailPaused;
+    await User.updateOne({ _id: req.user.id }, { $set: { emailPaused: next } });
+    res.json({ emailPaused: next });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { onboard, getProfile, updateProfile, toggleEmailPause };

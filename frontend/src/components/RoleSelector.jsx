@@ -81,7 +81,7 @@ const RoleSelector = ({ selected, onChange }) => {
   return (
     <div ref={wrapperRef}>
       <label className={labelCls}>What job titles are you interested in?</label>
-      <p className="text-xs text-slate-600 mb-2">Search or type a role — pick up to {MAX_ROLES}</p>
+      <p className="text-xs text-slate-600 mb-2">Search or type a role - pick up to {MAX_ROLES}</p>
 
       {selected.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-2">

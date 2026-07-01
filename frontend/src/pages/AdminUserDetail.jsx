@@ -3,6 +3,72 @@ import { useParams, useNavigate } from 'react-router-dom';
 import adminApi from '../services/adminApi';
 
 const scoreColor = (s) => s >= 75 ? 'bg-green-100 text-green-700' : s >= 50 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500';
+const barColor  = (s, max) => { const pct = s / max; return pct >= 0.8 ? 'bg-green-400' : pct >= 0.4 ? 'bg-yellow-400' : s === 0 ? 'bg-red-300' : 'bg-blue-400'; };
+
+const BreakdownRow = ({ userId, jobId }) => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    adminApi.get(`/admin/users/${userId}/jobs/${jobId}/breakdown`)
+      .then(r => setData(r.data))
+      .catch(() => setData({ error: true }))
+      .finally(() => setLoading(false));
+  }, [userId, jobId]);
+
+  if (loading) return (
+    <tr><td colSpan={9} className="px-6 py-4 bg-gray-50 text-xs text-gray-400">Loading breakdown...</td></tr>
+  );
+  if (!data || data.error) return (
+    <tr><td colSpan={9} className="px-6 py-4 bg-gray-50 text-xs text-red-400">Failed to load breakdown</td></tr>
+  );
+
+  const { breakdown } = data;
+  const DIMS = [
+    { key: 'role',       label: 'Role',       max: 40 },
+    { key: 'skills',     label: 'Skills',     max: 30 },
+    { key: 'location',   label: 'Location',   max: 10 },
+    { key: 'salary',     label: 'Salary',     max: 5  },
+    { key: 'experience', label: 'Experience', max: 15 },
+  ];
+
+  return (
+    <tr>
+      <td colSpan={9} className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+        <div className="flex flex-col gap-2">
+          {breakdown.cap && (
+            <p className="text-xs text-orange-500 font-medium mb-1">⚠ {breakdown.cap}</p>
+          )}
+          {DIMS.map(({ key, label, max }) => {
+            const dim = breakdown[key];
+            if (!dim) return null;
+            const pct = Math.round((dim.score / max) * 100);
+            return (
+              <div key={key} className="flex items-center gap-3">
+                <span className="text-xs font-medium text-gray-500 w-20 shrink-0">{label}</span>
+                <div className="flex-1 bg-gray-200 rounded-full h-1.5 max-w-[200px]">
+                  <div
+                    className={`h-1.5 rounded-full ${barColor(dim.score, max)}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <span className="text-xs font-semibold text-gray-700 w-12 shrink-0">{dim.score}/{max}</span>
+                <span className="text-xs text-gray-400 truncate">{dim.detail}</span>
+              </div>
+            );
+          })}
+          {breakdown.skills?.matched?.length > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1 ml-[92px]">
+              {breakdown.skills.matched.map(s => (
+                <span key={s} className="text-xs bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full">{s}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+};
 
 const JsonBlock = ({ data }) => (
   <pre className="bg-gray-900 text-green-400 text-xs rounded-lg p-4 overflow-auto max-h-80 leading-relaxed">
@@ -32,6 +98,7 @@ const AdminUserDetail = () => {
   const [schedule, setSchedule] = useState({ emailIntervalHours: 24, emailSendHourIST: 10 });
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [scheduleSaved, setScheduleSaved] = useState(false);
+  const [expandedJob, setExpandedJob] = useState(null);
 
   useEffect(() => {
     adminApi.get(`/admin/users/${id}`)
@@ -233,29 +300,43 @@ const AdminUserDetail = () => {
               <table className="w-full text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
                   <tr>
-                    {['Score', 'Title', 'Company', 'Location', 'Salary', 'Emailed', 'Saved', 'Applied', 'Matched at'].map((h) => (
+                    {['Score', 'Title', 'Company', 'Location', 'Salary', 'Emailed', 'Saved', 'Applied', 'Matched at', ''].map((h) => (
                       <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {jobs.map((uj, i) => (
-                    <tr key={i} className="hover:bg-gray-50">
-                      <td className="px-4 py-3">
-                        <span className={`text-xs font-bold px-2 py-1 rounded-full ${scoreColor(uj.score)}`}>{uj.score}%</span>
-                      </td>
-                      <td className="px-4 py-3 font-medium text-gray-900 max-w-xs truncate">{uj.job?.title || '—'}</td>
-                      <td className="px-4 py-3 text-gray-600">{uj.job?.company || '—'}</td>
-                      <td className="px-4 py-3 text-gray-600 text-xs">{uj.job?.location || '—'}</td>
-                      <td className="px-4 py-3 text-gray-600 text-xs">
-                        {uj.job?.salaryMin ? `₹${(uj.job.salaryMin / 100000).toFixed(1)}L` : '—'}
-                      </td>
-                      <td className="px-4 py-3">{uj.emailed ? <span className="text-green-600">✓</span> : <span className="text-gray-300">—</span>}</td>
-                      <td className="px-4 py-3">{uj.saved ? <span className="text-blue-600">★</span> : <span className="text-gray-300">—</span>}</td>
-                      <td className="px-4 py-3">{uj.applied ? <span className="text-green-600">✓</span> : <span className="text-gray-300">—</span>}</td>
-                      <td className="px-4 py-3 text-gray-400 text-xs">{new Date(uj.createdAt).toLocaleDateString()}</td>
-                    </tr>
-                  ))}
+                <tbody>
+                  {jobs.map((uj, i) => {
+                    const isOpen = expandedJob === uj.jobId;
+                    return (
+                      <>
+                        <tr key={i} className={`hover:bg-gray-50 border-t border-gray-100 ${isOpen ? 'bg-gray-50' : ''}`}>
+                          <td className="px-4 py-3">
+                            <span className={`text-xs font-bold px-2 py-1 rounded-full ${scoreColor(uj.score)}`}>{uj.score}%</span>
+                          </td>
+                          <td className="px-4 py-3 font-medium text-gray-900 max-w-xs truncate">{uj.job?.title || '—'}</td>
+                          <td className="px-4 py-3 text-gray-600">{uj.job?.company || '—'}</td>
+                          <td className="px-4 py-3 text-gray-600 text-xs">{uj.job?.location || '—'}</td>
+                          <td className="px-4 py-3 text-gray-600 text-xs">
+                            {uj.job?.salaryMin ? `₹${(uj.job.salaryMin / 100000).toFixed(1)}L` : '—'}
+                          </td>
+                          <td className="px-4 py-3">{uj.emailed ? <span className="text-green-600">✓</span> : <span className="text-gray-300">—</span>}</td>
+                          <td className="px-4 py-3">{uj.saved ? <span className="text-blue-600">★</span> : <span className="text-gray-300">—</span>}</td>
+                          <td className="px-4 py-3">{uj.applied ? <span className="text-green-600">✓</span> : <span className="text-gray-300">—</span>}</td>
+                          <td className="px-4 py-3 text-gray-400 text-xs">{new Date(uj.createdAt).toLocaleDateString()}</td>
+                          <td className="px-4 py-3">
+                            <button
+                              onClick={() => setExpandedJob(isOpen ? null : uj.jobId)}
+                              className="text-xs text-blue-500 hover:text-blue-700 font-medium whitespace-nowrap"
+                            >
+                              {isOpen ? '▲ Hide' : '▼ Why?'}
+                            </button>
+                          </td>
+                        </tr>
+                        {isOpen && <BreakdownRow userId={id} jobId={uj.jobId} />}
+                      </>
+                    );
+                  })}
                 </tbody>
               </table>
             )}

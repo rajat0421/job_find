@@ -4,7 +4,7 @@ const User = require('../models/User');
 const Job = require('../models/Job');
 const UserJob = require('../models/UserJob');
 const RequestLog = require('../models/RequestLog');
-const { scoreJob } = require('../services/jobMatcher.service');
+const { scoreJob, scoreJobWithBreakdown } = require('../services/jobMatcher.service');
 
 const generateJobHash = (title, company, location) =>
   crypto.createHash('md5').update(`${title}-${company}-${location}`).digest('hex');
@@ -317,4 +317,17 @@ const getLogs = async (req, res) => {
   }
 };
 
-module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, fixGreenhouseDescriptions, rescoreAllUsers, getLogs };
+const getJobBreakdown = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select('-password');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    const job = await Job.findById(req.params.jobId);
+    if (!job) return res.status(404).json({ message: 'Job not found' });
+    const result = scoreJobWithBreakdown(user, job);
+    res.json({ job: { title: job.title, company: job.company, location: job.location }, ...result });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, fixGreenhouseDescriptions, rescoreAllUsers, getLogs, getJobBreakdown };

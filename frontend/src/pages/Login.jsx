@@ -34,9 +34,9 @@ const Login = () => {
       <div className="w-full max-w-sm">
 
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-white tracking-tight">
+          <Link to="/" className="inline-block text-2xl font-bold text-white tracking-tight hover:opacity-80 transition-opacity">
             Job<span className="text-violet-400">Find</span>
-          </h1>
+          </Link>
           <p className="text-sm text-slate-500 mt-2">Welcome back</p>
         </div>
 

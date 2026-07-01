@@ -134,10 +134,19 @@ const AdminUserDetail = () => {
               <div className="grid grid-cols-2 gap-6">
                 <Field label="Email" value={user.email} />
                 <Field label="Name" value={user.name || '—'} />
-                <Field label="Experience" value={user.experience != null ? `${user.experience} years` : '—'} />
+                <Field label="Experience" value={user.experience === 0 ? 'Fresher' : user.experience != null ? `${user.experience === 10 ? '10+' : user.experience} year${user.experience !== 1 ? 's' : ''}` : '—'} />
+                <Field label="Qualification" value={user.qualification || '—'} />
                 <Field label="Salary expectation" value={user.salary ? `₹${(user.salary / 100000).toFixed(1)} LPA` : '—'} />
                 <Field label="Remote preference" value={user.remotePreference || '—'} />
                 <Field label="Joined" value={new Date(user.createdAt).toLocaleString()} />
+                <div>
+                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Roles</p>
+                  <div className="flex flex-wrap gap-2">
+                    {user.desiredRoles?.length ? user.desiredRoles.map((r) => (
+                      <span key={r} className="bg-purple-50 text-purple-700 text-xs px-2.5 py-1 rounded-full">{r}</span>
+                    )) : <span className="text-gray-400 text-sm">—</span>}
+                  </div>
+                </div>
                 <div>
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Skills</p>
                   <div className="flex flex-wrap gap-2">

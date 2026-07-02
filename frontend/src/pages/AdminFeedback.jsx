@@ -59,6 +59,7 @@ const AdminFeedback = () => {
           <nav className="flex items-center gap-1 ml-4">
             <button onClick={() => navigate('/admin')} className="text-sm text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">Users</button>
             <button onClick={() => navigate('/admin/logs')} className="text-sm text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">API Logs</button>
+            <button onClick={() => navigate('/admin/email-logs')} className="text-sm text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">Email Logs</button>
             <button className="text-sm font-semibold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg">Feedback</button>
           </nav>
         </div>

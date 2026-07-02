@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { isAdmin } = require('../middleware/admin.middleware');
-const { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, fixGreenhouseDescriptions, rescoreAllUsers, getLogs, getJobBreakdown } = require('../controllers/admin.controller');
+const { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, fixGreenhouseDescriptions, rescoreAllUsers, getLogs, getEmailLogs, getJobBreakdown } = require('../controllers/admin.controller');
 const { adminGetFeedback, approveFeedback, declineFeedback, deleteFeedback } = require('../controllers/feedback.controller');
 
 router.use(isAdmin);
@@ -13,6 +13,7 @@ router.patch('/users/:id/email-schedule', updateEmailSchedule);
 router.post('/fix-greenhouse', fixGreenhouseDescriptions);
 router.post('/rescore-all', rescoreAllUsers);
 router.get('/logs', getLogs);
+router.get('/email-logs', getEmailLogs);
 router.get('/users/:id/jobs/:jobId/breakdown', getJobBreakdown);
 
 router.get('/feedback',                  adminGetFeedback);

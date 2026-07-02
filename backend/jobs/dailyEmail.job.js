@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const User = require('../models/User');
 const UserJob = require('../models/UserJob');
+const EmailLog = require('../models/EmailLog');
 const { sendJobDigestEmail } = require('../services/email.service');
 
 const getISTHour = () => {
@@ -45,6 +46,7 @@ const sendDigest = async () => {
       await sendJobDigestEmail(user.email, user.name || 'there', newJobs.map((uj) => ({ job: uj.jobId, score: uj.score })));
       await UserJob.updateMany({ _id: { $in: newJobs.map((uj) => uj._id) } }, { emailed: true });
       await User.updateOne({ _id: user._id }, { lastEmailedAt: new Date() });
+      await EmailLog.create({ userId: user._id, email: user.email, name: user.name || '', jobCount: newJobs.length });
       console.log(`[EmailDigest] Sent to ${user.email} — ${newJobs.length} jobs`);
     } catch (err) {
       console.error(`[EmailDigest] Failed for ${user.email}:`, err.message);

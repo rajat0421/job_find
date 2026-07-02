@@ -4,6 +4,7 @@ const User = require('../models/User');
 const Job = require('../models/Job');
 const UserJob = require('../models/UserJob');
 const RequestLog = require('../models/RequestLog');
+const EmailLog = require('../models/EmailLog');
 const { scoreJob, scoreJobWithBreakdown } = require('../services/jobMatcher.service');
 
 const generateJobHash = (title, company, location) =>
@@ -323,6 +324,22 @@ const getLogs = async (req, res) => {
   }
 };
 
+const getEmailLogs = async (req, res) => {
+  try {
+    const { page = 1, limit = 50, email } = req.query;
+    const filter = {};
+    if (email) filter.email = { $regex: email, $options: 'i' };
+    const skip = (Number(page) - 1) * Number(limit);
+    const [logs, total] = await Promise.all([
+      EmailLog.find(filter).sort({ sentAt: -1 }).skip(skip).limit(Number(limit)).lean(),
+      EmailLog.countDocuments(filter),
+    ]);
+    res.json({ logs, total, page: Number(page), pages: Math.ceil(total / Number(limit)) });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 const getJobBreakdown = async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select('-password');
@@ -336,4 +353,4 @@ const getJobBreakdown = async (req, res) => {
   }
 };
 
-module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, fixGreenhouseDescriptions, rescoreAllUsers, getLogs, getJobBreakdown };
+module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, fixGreenhouseDescriptions, rescoreAllUsers, getLogs, getEmailLogs, getJobBreakdown };

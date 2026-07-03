@@ -6,6 +6,8 @@ const emailLogSchema = new mongoose.Schema({
   name:     { type: String, default: '' },
   jobCount: { type: Number, default: 0 },
   sentAt:   { type: Date, default: Date.now },
+  status:   { type: String, enum: ['sent', 'skipped', 'failed'], default: 'sent' },
+  reason:   { type: String, default: '' },
 });
 
 module.exports = mongoose.model('EmailLog', emailLogSchema);

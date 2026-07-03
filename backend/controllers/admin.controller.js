@@ -402,9 +402,10 @@ const setGlobalEmailSchedule = async (req, res) => {
 
 const getEmailLogs = async (req, res) => {
   try {
-    const { page = 1, limit = 50, email } = req.query;
+    const { page = 1, limit = 50, email, status } = req.query;
     const filter = {};
     if (email) filter.email = { $regex: email, $options: 'i' };
+    if (status && status !== 'all') filter.status = status;
     const skip = (Number(page) - 1) * Number(limit);
     const [logs, total] = await Promise.all([
       EmailLog.find(filter).sort({ sentAt: -1 }).skip(skip).limit(Number(limit)).lean(),
@@ -424,6 +425,46 @@ const getJobBreakdown = async (req, res) => {
     if (!job) return res.status(404).json({ message: 'Job not found' });
     const result = scoreJobWithBreakdown(user, job);
     res.json({ job: { title: job.title, company: job.company, location: job.location }, ...result });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const getUpcomingEmails = async (_req, res) => {
+  try {
+    const users = await User.find({ isOnboarded: true, isEmailVerified: true, emailPaused: { $ne: true } })
+      .select('name email emailIntervalHours emailSendHourIST lastEmailedAt');
+
+    const now = new Date();
+    const IST_OFFSET_MIN = 5 * 60 + 30;
+
+    const upcoming = users.map((u) => {
+      let nextAt;
+      if (u.emailIntervalHours === 24) {
+        const sendMinutesUTC = u.emailSendHourIST * 60 - IST_OFFSET_MIN;
+        const todayMidnightUTC = new Date(now);
+        todayMidnightUTC.setUTCHours(0, 0, 0, 0);
+        let ms = todayMidnightUTC.getTime() + sendMinutesUTC * 60 * 1000;
+        if (ms <= now.getTime()) ms += 24 * 60 * 60 * 1000;
+        nextAt = new Date(ms);
+      } else {
+        nextAt = u.lastEmailedAt
+          ? new Date(new Date(u.lastEmailedAt).getTime() + u.emailIntervalHours * 60 * 60 * 1000)
+          : now;
+      }
+      return {
+        _id: u._id,
+        name: u.name,
+        email: u.email,
+        emailIntervalHours: u.emailIntervalHours,
+        emailSendHourIST: u.emailSendHourIST,
+        lastEmailedAt: u.lastEmailedAt,
+        nextAt: nextAt.toISOString(),
+        overdue: nextAt <= now,
+      };
+    }).sort((a, b) => new Date(a.nextAt) - new Date(b.nextAt));
+
+    res.json(upcoming);
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -465,4 +506,4 @@ const sendDigestForUser = async (req, res) => {
   }
 };
 
-module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, getConfig, updateConfig, fixGreenhouseDescriptions, rescoreAllUsers, getLogs, getEmailLogs, getJobBreakdown, sendDigestForUser };
+module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, getConfig, updateConfig, fixGreenhouseDescriptions, rescoreAllUsers, getLogs, getEmailLogs, getJobBreakdown, sendDigestForUser, getUpcomingEmails };

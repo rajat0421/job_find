@@ -47,7 +47,12 @@ const sendDigest = async () => {
       .populate('jobId');
 
     if (!newJobs.length) {
-      console.log(`[EmailDigest] Skipped ${user.email} — no unread jobs with score >= 50`);
+      const totalUnread = await UserJob.countDocuments({ userId: user._id, emailed: false });
+      const reason = totalUnread === 0
+        ? 'No matched jobs yet'
+        : `${totalUnread} matched job(s) but none scored ≥ 50`;
+      console.log(`[EmailDigest] Skipped ${user.email} — ${reason}`);
+      await EmailLog.create({ userId: user._id, email: user.email, name: user.name || '', jobCount: 0, status: 'skipped', reason });
       continue;
     }
 
@@ -58,7 +63,7 @@ const sendDigest = async () => {
       await sendJobDigestEmail(user.email, user.name || 'there', jobsPayload);
       await UserJob.updateMany({ _id: { $in: newJobs.map((uj) => uj._id) } }, { emailed: true });
       await User.updateOne({ _id: user._id }, { lastEmailedAt: sentAt });
-      await EmailLog.create({ userId: user._id, email: user.email, name: user.name || '', jobCount: newJobs.length });
+      await EmailLog.create({ userId: user._id, email: user.email, name: user.name || '', jobCount: newJobs.length, status: 'sent' });
       console.log(`[EmailDigest] Sent to ${user.email} — ${newJobs.length} jobs`);
 
       if (adminEmail) {
@@ -67,6 +72,7 @@ const sendDigest = async () => {
       }
     } catch (err) {
       console.error(`[EmailDigest] Failed for ${user.email}:`, err.message);
+      await EmailLog.create({ userId: user._id, email: user.email, name: user.name || '', jobCount: 0, status: 'failed', reason: err.message });
     }
   }
 };

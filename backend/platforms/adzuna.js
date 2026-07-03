@@ -23,6 +23,14 @@ const ROLE_QUERIES = [
   'react developer',
   'nodejs developer',
   'android developer',
+  // SAP & ERP
+  'sap consultant',
+  'sap mm',
+  'sap sd',
+  'sap fico',
+  'sap abap',
+  'sap basis',
+  'erp consultant',
 ];
 
 const PAGES_PER_ROLE = 2; // 2 pages × 50 results × 16 roles = up to 1600 jobs/cycle

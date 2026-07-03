@@ -285,11 +285,12 @@ const AdminUserDetail = () => {
 
         {/* Jobs tab */}
         {activeTab === 'jobs' && (
-          <div className="bg-[#12121c] border border-white/10 rounded-xl overflow-hidden">
+          <div className="bg-[#12121c] border border-white/10 rounded-xl">
             {jobs.length === 0 ? (
               <div className="text-center py-16 text-slate-600">No jobs matched yet</div>
             ) : (
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto rounded-xl">
+              <table className="w-full text-sm min-w-[900px]">
                 <thead className="border-b border-white/10">
                   <tr>
                     {['Score', 'Title', 'Company', 'Location', 'Salary', 'Emailed', 'Saved', 'Applied', 'Matched at', ''].map((h) => (
@@ -306,7 +307,12 @@ const AdminUserDetail = () => {
                           <td className="px-4 py-3">
                             <span className={`text-xs font-bold px-2 py-1 rounded-full ${scoreColor(uj.score)}`}>{uj.score}%</span>
                           </td>
-                          <td className="px-4 py-3 font-medium text-slate-200 max-w-xs truncate">{uj.job?.title || '—'}</td>
+                          <td className="px-4 py-3 font-medium text-slate-200 max-w-xs truncate">
+                            {uj.job?.applyLink
+                              ? <a href={uj.job.applyLink} target="_blank" rel="noreferrer" className="hover:text-violet-400 transition-colors">{uj.job.title}</a>
+                              : uj.job?.title || '—'
+                            }
+                          </td>
                           <td className="px-4 py-3 text-slate-400">{uj.job?.company || '—'}</td>
                           <td className="px-4 py-3 text-slate-400 text-xs">{uj.job?.location || '—'}</td>
                           <td className="px-4 py-3 text-slate-400 text-xs">
@@ -331,6 +337,7 @@ const AdminUserDetail = () => {
                   })}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         )}

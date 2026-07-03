@@ -324,6 +324,46 @@ const getLogs = async (req, res) => {
   }
 };
 
+const getEmailScheduleStats = async (_req, res) => {
+  try {
+    const [byInterval, total, paused] = await Promise.all([
+      User.aggregate([
+        { $match: { isOnboarded: true, isEmailVerified: true } },
+        { $group: { _id: '$emailIntervalHours', count: { $sum: 1 } } },
+        { $sort: { _id: 1 } },
+      ]),
+      User.countDocuments({ isOnboarded: true, isEmailVerified: true }),
+      User.countDocuments({ isOnboarded: true, isEmailVerified: true, emailPaused: true }),
+    ]);
+    res.json({ byInterval, total, paused });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const setGlobalEmailSchedule = async (req, res) => {
+  try {
+    const { emailIntervalHours, emailSendHourIST } = req.body;
+    const update = {};
+
+    if (emailIntervalHours !== undefined) {
+      const interval = Number(emailIntervalHours);
+      if (![1, 5, 24].includes(interval)) return res.status(400).json({ message: 'emailIntervalHours must be 1, 5, or 24' });
+      update.emailIntervalHours = interval;
+    }
+    if (emailSendHourIST !== undefined) {
+      const hour = Number(emailSendHourIST);
+      if (!Number.isInteger(hour) || hour < 0 || hour > 23) return res.status(400).json({ message: 'emailSendHourIST must be 0–23' });
+      update.emailSendHourIST = hour;
+    }
+
+    const result = await User.updateMany({ isOnboarded: true, isEmailVerified: true }, update);
+    res.json({ message: 'Global schedule updated', usersUpdated: result.modifiedCount });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 const getEmailLogs = async (req, res) => {
   try {
     const { page = 1, limit = 50, email } = req.query;
@@ -353,4 +393,4 @@ const getJobBreakdown = async (req, res) => {
   }
 };
 
-module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, fixGreenhouseDescriptions, rescoreAllUsers, getLogs, getEmailLogs, getJobBreakdown };
+module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, fixGreenhouseDescriptions, rescoreAllUsers, getLogs, getEmailLogs, getJobBreakdown };

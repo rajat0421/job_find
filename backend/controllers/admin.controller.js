@@ -324,6 +324,16 @@ const getLogs = async (req, res) => {
   }
 };
 
+const triggerEmailDigest = async (_req, res) => {
+  try {
+    const { sendDigest } = require('../jobs/dailyEmail.job');
+    await sendDigest();
+    res.json({ message: 'Digest triggered' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 const getEmailScheduleStats = async (_req, res) => {
   try {
     const [byInterval, total, paused] = await Promise.all([
@@ -393,4 +403,4 @@ const getJobBreakdown = async (req, res) => {
   }
 };
 
-module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, fixGreenhouseDescriptions, rescoreAllUsers, getLogs, getEmailLogs, getJobBreakdown };
+module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, fixGreenhouseDescriptions, rescoreAllUsers, getLogs, getEmailLogs, getJobBreakdown };

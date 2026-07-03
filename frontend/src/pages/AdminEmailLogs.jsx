@@ -29,6 +29,8 @@ export default function AdminEmailLogs() {
   const [hourIST, setHourIST] = useState(10);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
+  const [triggering, setTriggering] = useState(false);
+  const [triggerMsg, setTriggerMsg] = useState('');
 
   // Logs state
   const [logs, setLogs] = useState([]);
@@ -79,6 +81,22 @@ export default function AdminEmailLogs() {
     } finally {
       setSaving(false);
       setTimeout(() => setSaveMsg(''), 3000);
+    }
+  };
+
+  const handleTrigger = async () => {
+    if (!confirm('Send job emails to all due users now?')) return;
+    setTriggering(true);
+    setTriggerMsg('');
+    try {
+      await adminApi.post('/admin/trigger-digest');
+      setTriggerMsg('✓ Emails sent');
+      fetchLogs(1);
+    } catch {
+      setTriggerMsg('Failed');
+    } finally {
+      setTriggering(false);
+      setTimeout(() => setTriggerMsg(''), 4000);
     }
   };
 
@@ -169,7 +187,7 @@ export default function AdminEmailLogs() {
               </div>
             )}
 
-            <div className="flex items-center gap-3 pb-0.5">
+            <div className="flex items-center gap-3 pb-0.5 flex-wrap">
               <button
                 onClick={handleSave}
                 disabled={saving}
@@ -180,6 +198,19 @@ export default function AdminEmailLogs() {
               {saveMsg && (
                 <span className={`text-sm font-medium ${saveMsg.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>
                   {saveMsg}
+                </span>
+              )}
+              <div className="w-px h-6 bg-gray-200 mx-1" />
+              <button
+                onClick={handleTrigger}
+                disabled={triggering}
+                className="bg-green-600 text-white text-sm px-5 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-60 font-semibold"
+              >
+                {triggering ? 'Sending…' : '▶ Send emails now'}
+              </button>
+              {triggerMsg && (
+                <span className={`text-sm font-medium ${triggerMsg.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>
+                  {triggerMsg}
                 </span>
               )}
             </div>

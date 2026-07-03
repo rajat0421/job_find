@@ -60,4 +60,4 @@ const startDailyEmailCron = () => {
   console.log('[Cron] Email digest scheduled — runs every hour, per-user schedule applied');
 };
 
-module.exports = { startDailyEmailCron };
+module.exports = { startDailyEmailCron, sendDigest };

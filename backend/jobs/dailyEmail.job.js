@@ -25,11 +25,13 @@ const isDue = (user) => {
 };
 
 const sendDigest = async () => {
+  console.log(`[EmailDigest] Running at ${new Date().toISOString()}`);
   const users = await User.find({ isOnboarded: true, isEmailVerified: true, emailPaused: { $ne: true } });
+  console.log(`[EmailDigest] ${users.length} eligible user(s) found`);
   const due = users.filter(isDue);
+  console.log(`[EmailDigest] ${due.length} user(s) due`);
 
   if (!due.length) return;
-  console.log(`[EmailDigest] ${due.length} user(s) due`);
 
   const adminCfg = await Config.findOne({ key: 'adminNotificationEmail' });
   const adminEmail = adminCfg?.value || null;
@@ -44,7 +46,10 @@ const sendDigest = async () => {
       .limit(10)
       .populate('jobId');
 
-    if (!newJobs.length) continue;
+    if (!newJobs.length) {
+      console.log(`[EmailDigest] Skipped ${user.email} — no unread jobs with score >= 50`);
+      continue;
+    }
 
     const jobsPayload = newJobs.map((uj) => ({ job: uj.jobId, score: uj.score }));
     const sentAt = new Date();
@@ -67,9 +72,9 @@ const sendDigest = async () => {
 };
 
 const startDailyEmailCron = () => {
-  // Runs every hour on the hour (IST) — per-user schedule is evaluated inside sendDigest
-  cron.schedule('0 * * * *', sendDigest, { timezone: 'Asia/Kolkata' });
-  console.log('[Cron] Email digest scheduled — runs every hour, per-user schedule applied');
+  // Runs 20 min past every hour — offset from fetchJobs (which runs at :00) so fresh jobs are ready
+  cron.schedule('20 * * * *', sendDigest, { timezone: 'Asia/Kolkata' });
+  console.log('[Cron] Email digest scheduled — runs every hour at :20, per-user schedule applied');
 };
 
 module.exports = { startDailyEmailCron, sendDigest };

@@ -10,7 +10,6 @@ const userSchema = new mongoose.Schema({
   experience: { type: Number },
   locations: [{ type: String }],
   salary: { type: Number },
-  desiredRole:  { type: String, default: null },
   desiredRoles: [{ type: String }],
   remotePreference: { type: String, enum: ['remote', 'hybrid', 'office', 'any'], default: 'any' },
   emailIntervalHours: { type: Number, default: 24 },   // 1 | 5 | 24

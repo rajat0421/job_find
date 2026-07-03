@@ -62,7 +62,7 @@ const ROLE_KEYWORDS = {
   'Engineering Manager':  ['engineering manager', 'head of engineering', 'vp of engineering', 'vp engineering', 'director of engineering'],
 };
 
-// Applied only when user has NOT set a desiredRole — filters obvious non-engineering titles
+// Applied only when user has NOT set any desiredRoles — filters obvious non-engineering titles
 const TITLE_BLACKLIST = [
   'manager', 'director', 'vice president', ' vp ', 'head of',
   'chief ', 'president', 'sales', 'marketing', 'recruiter',
@@ -93,7 +93,7 @@ const scoreJob = (user, job) => {
   const titleLower = job.title.toLowerCase();
 
   // ── Step 1: Role filter / blacklist ─────────────────────────────────────────
-  const roles = user.desiredRoles?.length ? user.desiredRoles : (user.desiredRole ? [user.desiredRole] : []);
+  const roles = user.desiredRoles || [];
   if (roles.length) {
     // User has specified roles → job title MUST match at least one
     const allKeywords = roles.flatMap(r => ROLE_KEYWORDS[r] || [r.toLowerCase()]);
@@ -207,7 +207,7 @@ const scoreJobWithBreakdown = (user, job) => {
   const breakdown = {};
 
   // ── Role ────────────────────────────────────────────────────────────────────
-  const roles = user.desiredRoles?.length ? user.desiredRoles : (user.desiredRole ? [user.desiredRole] : []);
+  const roles = user.desiredRoles || [];
   if (roles.length) {
     const allKeywords = roles.flatMap(r => ROLE_KEYWORDS[r] || [r.toLowerCase()]);
     const hit = allKeywords.find(k => titleLower.includes(k));

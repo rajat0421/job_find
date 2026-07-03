@@ -104,7 +104,7 @@ const Profile = () => {
       const u = res.data;
       setForm({
         name: u.name || '',
-        desiredRoles: u.desiredRoles?.length ? u.desiredRoles : (u.desiredRole ? [u.desiredRole] : []),
+        desiredRoles: u.desiredRoles || [],
         skills: u.skills || [],
         experience: u.experience ?? null,
         qualification: u.qualification || '',

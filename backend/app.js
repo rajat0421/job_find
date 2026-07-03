@@ -26,9 +26,7 @@ app.use('/api/jobs', jobRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/feedback', feedbackRoutes);
 
-app.get('/api/health', (_req, res) =>
-  res.json({ status: 'ok', message: 'Server is running', timestamp: new Date().toISOString() })
-);
+app.get('/api/health', (_req, res) => res.json({ status: 'up', message: 'running' }));
 
 // Manual trigger for testing — remove before production
 app.post('/api/dev/fetch-jobs', async (_req, res) => {

@@ -12,7 +12,6 @@ const onboard = async (req, res) => {
       {
         name, skills, experience, locations, salary, remotePreference,
         desiredRoles: desiredRoles || [],
-        desiredRole: desiredRoles?.[0] || null,
         qualification: qualification || null,
         isOnboarded: true,
       }
@@ -50,7 +49,6 @@ const updateProfile = async (req, res) => {
     if (qualification     !== undefined) update.qualification     = qualification || null;
     if (desiredRoles      !== undefined) {
       update.desiredRoles = desiredRoles || [];
-      update.desiredRole  = desiredRoles?.[0] || null;
     }
     // salary can be 0 or null (user clearing it) — only skip if not sent at all
     if (salary !== undefined) update.salary = salary || null;

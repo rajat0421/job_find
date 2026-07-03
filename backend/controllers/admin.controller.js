@@ -13,7 +13,7 @@ const generateJobHash = (title, company, location) =>
 
 // Fetch + score Adzuna jobs live for a specific user (no DB save)
 const runAdzunaForUser = async (user) => {
-  const roles = user.desiredRoles?.length ? user.desiredRoles : (user.desiredRole ? [user.desiredRole] : []);
+  const roles = user.desiredRoles?.length ? user.desiredRoles : [];
   const what = roles.length
     ? roles.slice(0, 2).join(' ')
     : (user.skills?.slice(0, 3).join(' ') || 'software developer');

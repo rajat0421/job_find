@@ -143,7 +143,7 @@ const getUserDetail = async (req, res) => {
     const userJobs = await UserJob.find({ userId: user._id })
       .sort({ score: -1 })
       .limit(50)
-      .populate('jobId');
+      .populate('jobId', '-description');
 
     res.json({
       user,

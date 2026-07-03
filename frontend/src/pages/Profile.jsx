@@ -46,7 +46,7 @@ const chipBase = 'px-3.5 py-2 rounded-lg text-sm font-medium border transition-c
 const chipActive = 'bg-violet-600 text-white border-violet-600';
 const chipIdle = 'border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-200 bg-transparent';
 
-const TagInput = ({ label, placeholder, tags, onChange }) => {
+const TagInput = ({ label, hint, placeholder, tags, onChange }) => {
   const [input, setInput] = useState('');
   const add = () => {
     const val = input.trim();
@@ -58,6 +58,7 @@ const TagInput = ({ label, placeholder, tags, onChange }) => {
   return (
     <div>
       <label className={labelCls}>{label}</label>
+      {hint && <p className="text-xs text-slate-600 mb-2">{hint}</p>}
       <div className="flex gap-2">
         <input
           type="text" value={input}
@@ -159,6 +160,7 @@ const Profile = () => {
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className={inputCls}
+                placeholder="Your full name"
               />
             </div>
 
@@ -204,17 +206,24 @@ const Profile = () => {
               </div>
             </div>
 
-            <TagInput label="Preferred locations" placeholder="e.g. Bangalore" tags={form.locations} onChange={locations => setForm({ ...form, locations })} />
+            <TagInput
+              label="Preferred locations"
+              hint="Press Enter or click Add after each location"
+              placeholder="e.g. Bangalore, Mumbai, Remote..."
+              tags={form.locations}
+              onChange={locations => setForm({ ...form, locations })}
+            />
 
             <div>
               <label className={labelCls}>
-                Expected salary <span className="text-slate-500 font-normal">(LPA)</span>
+                Expected salary <span className="text-slate-500 font-normal">(LPA — optional)</span>
               </label>
               <input
                 type="number" min="0"
                 value={form.salary}
                 onChange={(e) => setForm({ ...form, salary: e.target.value })}
                 className={inputCls}
+                placeholder="e.g. 12"
               />
             </div>
 

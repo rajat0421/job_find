@@ -429,4 +429,40 @@ const getJobBreakdown = async (req, res) => {
   }
 };
 
-module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, getConfig, updateConfig, fixGreenhouseDescriptions, rescoreAllUsers, getLogs, getEmailLogs, getJobBreakdown };
+const sendDigestForUser = async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id).select('-password');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+
+    const { sendJobDigestEmail, sendAdminDigestCopy } = require('../services/email.service');
+    const EmailLog = require('../models/EmailLog');
+    const Config = require('../models/Config');
+
+    const newJobs = await UserJob.find({ userId: user._id, emailed: false, score: { $gte: 50 } })
+      .sort({ score: -1 })
+      .limit(10)
+      .populate('jobId');
+
+    if (!newJobs.length) return res.status(400).json({ message: 'No unread jobs with score ≥ 50 for this user' });
+
+    const jobsPayload = newJobs.map((uj) => ({ job: uj.jobId, score: uj.score }));
+    const sentAt = new Date();
+
+    await sendJobDigestEmail(user.email, user.name || 'there', jobsPayload);
+    await UserJob.updateMany({ _id: { $in: newJobs.map((uj) => uj._id) } }, { emailed: true });
+    await User.updateOne({ _id: user._id }, { lastEmailedAt: sentAt });
+    await EmailLog.create({ userId: user._id, email: user.email, name: user.name || '', jobCount: newJobs.length });
+
+    const adminCfg = await Config.findOne({ key: 'adminNotificationEmail' });
+    if (adminCfg?.value) {
+      sendAdminDigestCopy(adminCfg.value, user.email, user.name || 'there', sentAt, jobsPayload)
+        .catch((err) => console.error('[Admin] sendDigestForUser admin copy failed:', err.message));
+    }
+
+    res.json({ message: `Email sent to ${user.email} with ${newJobs.length} jobs` });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, getConfig, updateConfig, fixGreenhouseDescriptions, rescoreAllUsers, getLogs, getEmailLogs, getJobBreakdown, sendDigestForUser };

@@ -96,6 +96,8 @@ const AdminUserDetail = () => {
   const [loading, setLoading] = useState(true);
   const [apiResult, setApiResult] = useState(null);
   const [running, setRunning] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sendMsg, setSendMsg] = useState('');
   const [activeTab, setActiveTab] = useState('profile');
   const [schedule, setSchedule] = useState({ emailIntervalHours: 24, emailSendHourIST: 10 });
   const [scheduleSaving, setScheduleSaving] = useState(false);
@@ -123,6 +125,19 @@ const AdminUserDetail = () => {
     } catch {} finally { setScheduleSaving(false); }
   };
 
+  const sendEmail = async () => {
+    setSending(true); setSendMsg('');
+    try {
+      const res = await adminApi.post(`/admin/users/${id}/send-digest`);
+      setSendMsg(`✓ ${res.data.message}`);
+    } catch (err) {
+      setSendMsg(err.response?.data?.message || 'Failed');
+    } finally {
+      setSending(false);
+      setTimeout(() => setSendMsg(''), 4000);
+    }
+  };
+
   const runApi = async () => {
     setRunning(true); setActiveTab('api');
     try {
@@ -148,13 +163,27 @@ const AdminUserDetail = () => {
           <span className="text-xl font-bold text-violet-400">JobFind</span>
           <span className="text-xs bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-medium">Admin</span>
         </div>
-        <button
-          onClick={runApi}
-          disabled={running}
-          className="flex items-center gap-2 bg-violet-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-violet-700 disabled:opacity-60 transition-colors"
-        >
-          {running ? <><span className="animate-spin">⟳</span> Running API...</> : <>⚡ Run API for this user</>}
-        </button>
+        <div className="flex items-center gap-3">
+          {sendMsg && (
+            <span className={`text-sm font-medium ${sendMsg.startsWith('✓') ? 'text-green-400' : 'text-red-400'}`}>
+              {sendMsg}
+            </span>
+          )}
+          <button
+            onClick={sendEmail}
+            disabled={sending}
+            className="flex items-center gap-2 bg-green-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-60 transition-colors"
+          >
+            {sending ? <><span className="animate-spin">⟳</span> Sending...</> : <>✉ Send email now</>}
+          </button>
+          <button
+            onClick={runApi}
+            disabled={running}
+            className="flex items-center gap-2 bg-violet-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-violet-700 disabled:opacity-60 transition-colors"
+          >
+            {running ? <><span className="animate-spin">⟳</span> Running API...</> : <>⚡ Run API for this user</>}
+          </button>
+        </div>
       </div>
 
       <div className="max-w-5xl mx-auto px-4 py-8">

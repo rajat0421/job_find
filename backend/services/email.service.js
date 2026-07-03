@@ -34,7 +34,7 @@ const scoreBadge = (score) => {
   return               { bg: '#f3f4f6', color: '#6b7280',  label: 'Partial match' };
 };
 
-const sendJobDigestEmail = (to, name, jobs) => {
+const buildJobDigestHtml = (name, jobs) => {
   const jobsHtml = jobs
     .map((j, i) => {
       const badge = scoreBadge(j.score);
@@ -67,36 +67,58 @@ const sendJobDigestEmail = (to, name, jobs) => {
     .join('');
 
   const topScore = jobs[0]?.score || 0;
-  const badge = scoreBadge(topScore);
 
-  return sendHtmlEmail(
-    to,
-    `${jobs.length} new job matches for you — top match ${jobs[0]?.score || 0}%`,
-    `
-    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:auto;background:#f9fafb;padding:32px 16px;">
-
-      <!-- Header -->
-      <div style="background:#4f46e5;border-radius:16px;padding:28px 28px 24px;margin-bottom:24px;text-align:left;">
-        <p style="margin:0 0 4px;color:#c7d2fe;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">JobFind</p>
-        <h1 style="margin:0 0 8px;color:#fff;font-size:22px;font-weight:800;">Hi ${name}, your job digest is here</h1>
-        <p style="margin:0;color:#c7d2fe;font-size:14px;">
-          We found <strong style="color:#fff;">${jobs.length} new jobs</strong> matching your profile.
-          Your top match is <strong style="color:#fff;">${topScore}%</strong>.
-        </p>
-      </div>
-
-      <!-- Job list -->
-      <div style="margin-bottom:24px;">
-        ${jobsHtml}
-      </div>
-
-      <!-- Footer -->
-      <p style="color:#9ca3af;font-size:12px;text-align:center;margin:0;">
-        You're receiving this because you signed up on JobFind.<br/>
-        Jobs are matched to your skills, location, experience and salary preference.
+  return `
+  <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:600px;margin:auto;background:#f9fafb;padding:32px 16px;">
+    <div style="background:#4f46e5;border-radius:16px;padding:28px 28px 24px;margin-bottom:24px;text-align:left;">
+      <p style="margin:0 0 4px;color:#c7d2fe;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">JobFind</p>
+      <h1 style="margin:0 0 8px;color:#fff;font-size:22px;font-weight:800;">Hi ${name}, your job digest is here</h1>
+      <p style="margin:0;color:#c7d2fe;font-size:14px;">
+        We found <strong style="color:#fff;">${jobs.length} new jobs</strong> matching your profile.
+        Your top match is <strong style="color:#fff;">${topScore}%</strong>.
       </p>
     </div>
-    `
+    <div style="margin-bottom:24px;">${jobsHtml}</div>
+    <p style="color:#9ca3af;font-size:12px;text-align:center;margin:0;">
+      You're receiving this because you signed up on JobFind.<br/>
+      Jobs are matched to your skills, location, experience and salary preference.
+    </p>
+  </div>
+  `;
+};
+
+const sendJobDigestEmail = (to, name, jobs) =>
+  sendHtmlEmail(
+    to,
+    `${jobs.length} new job matches for you — top match ${jobs[0]?.score || 0}%`,
+    buildJobDigestHtml(name, jobs)
+  );
+
+const sendAdminDigestCopy = (adminEmail, userEmail, userName, sentAt, jobs) => {
+  const userHtml = buildJobDigestHtml(userName, jobs);
+  const ts = new Date(sentAt).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true,
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+  const html = `
+  <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:620px;margin:auto;">
+    <div style="background:#1e1b4b;border-radius:12px;padding:16px 20px;margin-bottom:4px;">
+      <p style="margin:0;color:#a5b4fc;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Admin Notification</p>
+      <p style="margin:4px 0 0;color:#fff;font-size:15px;font-weight:700;">
+        📧 Sent to <span style="color:#c7d2fe;">${userName}</span>
+        &lt;<a href="mailto:${userEmail}" style="color:#818cf8;text-decoration:none;">${userEmail}</a>&gt;
+      </p>
+      <p style="margin:4px 0 0;color:#a5b4fc;font-size:13px;">
+        ${jobs.length} job${jobs.length !== 1 ? 's' : ''} · Sent at ${ts} IST
+      </p>
+    </div>
+    ${userHtml}
+  </div>
+  `;
+
+  return sendHtmlEmail(
+    adminEmail,
+    `[JobFind] Sent to ${userName} (${userEmail}) — ${jobs.length} jobs`,
+    html
   );
 };
 
@@ -114,4 +136,4 @@ const sendPasswordResetEmail = (to, otp) =>
     `
   );
 
-module.exports = { sendOtpEmail, sendPasswordResetEmail, sendJobDigestEmail };
+module.exports = { sendOtpEmail, sendPasswordResetEmail, sendJobDigestEmail, sendAdminDigestCopy };

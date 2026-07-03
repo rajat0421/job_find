@@ -11,6 +11,17 @@ const toIST = (iso) =>
 
 const TABS = ['pending', 'approved', 'declined'];
 
+const NavBtn = ({ active, onClick, children }) => (
+  <button
+    onClick={onClick}
+    className={`text-sm px-3 py-1.5 rounded-lg transition-colors font-medium ${
+      active ? 'text-violet-400 bg-violet-500/10' : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
+    }`}
+  >
+    {children}
+  </button>
+);
+
 const AdminFeedback = () => {
   const navigate = useNavigate();
   const [feedbacks, setFeedbacks] = useState([]);
@@ -44,28 +55,22 @@ const AdminFeedback = () => {
     }
   };
 
-  const counts = { pending: 0, approved: 0, declined: 0 };
-  if (tab === 'pending')  counts.pending  = feedbacks.length;
-  if (tab === 'approved') counts.approved = feedbacks.length;
-  if (tab === 'declined') counts.declined = feedbacks.length;
-
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+    <div className="min-h-screen bg-[#0a0a12]">
+      <div className="bg-[#12121c] border-b border-white/10 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <span className="text-xl font-bold text-blue-600">JobFind</span>
-          <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">Admin</span>
+          <span className="text-xl font-bold text-violet-400">JobFind</span>
+          <span className="text-xs bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-medium">Admin</span>
           <nav className="flex items-center gap-1 ml-4">
-            <button onClick={() => navigate('/admin')} className="text-sm text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">Users</button>
-            <button onClick={() => navigate('/admin/logs')} className="text-sm text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">API Logs</button>
-            <button onClick={() => navigate('/admin/email-logs')} className="text-sm text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">Email Logs</button>
-            <button className="text-sm font-semibold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg">Feedback</button>
+            <NavBtn onClick={() => navigate('/admin')}>Users</NavBtn>
+            <NavBtn onClick={() => navigate('/admin/logs')}>API Logs</NavBtn>
+            <NavBtn onClick={() => navigate('/admin/email-logs')}>Email Logs</NavBtn>
+            <NavBtn active>Feedback</NavBtn>
           </nav>
         </div>
         <button
           onClick={() => { localStorage.removeItem('adminToken'); window.location.href = '/admin'; }}
-          className="text-sm text-red-500 hover:text-red-700"
+          className="text-sm text-red-400 hover:text-red-300 font-medium"
         >
           Exit admin
         </button>
@@ -73,18 +78,18 @@ const AdminFeedback = () => {
 
       <div className="max-w-3xl mx-auto px-4 py-8">
         <div className="mb-6">
-          <h1 className="text-xl font-bold text-gray-900">User Feedback</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Review pending submissions before they go public.</p>
+          <h1 className="text-xl font-bold text-slate-100">User Feedback</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Review pending submissions before they go public.</p>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-5 bg-gray-100 p-1 rounded-lg w-fit">
+        <div className="flex gap-1 mb-5 bg-white/5 p-1 rounded-lg w-fit">
           {TABS.map(t => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={`px-4 py-1.5 rounded-md text-sm font-medium capitalize transition-colors ${
-                tab === t ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                tab === t ? 'bg-[#12121c] text-slate-100 shadow-sm border border-white/10' : 'text-slate-500 hover:text-slate-300'
               }`}
             >
               {t}
@@ -92,44 +97,42 @@ const AdminFeedback = () => {
           ))}
         </div>
 
-        {/* List */}
         {loading ? (
-          <div className="text-center text-gray-400 py-20">Loading...</div>
+          <div className="text-center text-slate-600 py-20">Loading...</div>
         ) : feedbacks.length === 0 ? (
-          <div className="text-center text-gray-400 py-20">No {tab} feedback.</div>
+          <div className="text-center text-slate-600 py-20">No {tab} feedback.</div>
         ) : (
           <div className="flex flex-col gap-3">
             {feedbacks.map(fb => (
-              <div key={fb._id} className="bg-white border border-gray-200 rounded-xl p-5">
+              <div key={fb._id} className="bg-[#12121c] border border-white/10 rounded-xl p-5">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                      <span className="text-sm font-semibold text-gray-800">{fb.name || 'Anonymous'}</span>
-                      <span className="text-xs text-gray-400">{toIST(fb.timestamp)}</span>
+                      <span className="text-sm font-semibold text-slate-200">{fb.name || 'Anonymous'}</span>
+                      <span className="text-xs text-slate-600">{toIST(fb.timestamp)}</span>
                       {(fb.likes?.length > 0 || fb.dislikes?.length > 0) && (
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs text-slate-600">
                           · ♥ {fb.likes?.length || 0} &nbsp; 👎 {fb.dislikes?.length || 0}
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-gray-700 leading-relaxed">{fb.message}</p>
+                    <p className="text-sm text-slate-300 leading-relaxed">{fb.message}</p>
                   </div>
 
-                  {/* Actions */}
                   <div className="flex items-center gap-2 shrink-0">
                     {tab === 'pending' && (
                       <>
                         <button
                           onClick={() => act(fb._id, 'approve')}
                           disabled={!!acting[fb._id]}
-                          className="text-xs bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-40"
+                          className="text-xs bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-40"
                         >
                           {acting[fb._id] === 'approve' ? '...' : 'Approve'}
                         </button>
                         <button
                           onClick={() => act(fb._id, 'decline')}
                           disabled={!!acting[fb._id]}
-                          className="text-xs bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-40"
+                          className="text-xs bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-40"
                         >
                           {acting[fb._id] === 'decline' ? '...' : 'Decline'}
                         </button>
@@ -139,7 +142,7 @@ const AdminFeedback = () => {
                       <button
                         onClick={() => act(fb._id, 'decline')}
                         disabled={!!acting[fb._id]}
-                        className="text-xs text-gray-400 hover:text-red-500 font-medium transition-colors disabled:opacity-40"
+                        className="text-xs text-slate-500 hover:text-red-400 font-medium transition-colors disabled:opacity-40"
                       >
                         {acting[fb._id] ? '...' : 'Revoke'}
                       </button>
@@ -149,14 +152,14 @@ const AdminFeedback = () => {
                         <button
                           onClick={() => act(fb._id, 'approve')}
                           disabled={!!acting[fb._id]}
-                          className="text-xs text-gray-400 hover:text-emerald-600 font-medium transition-colors disabled:opacity-40"
+                          className="text-xs text-slate-500 hover:text-emerald-400 font-medium transition-colors disabled:opacity-40"
                         >
                           {acting[fb._id] === 'approve' ? '...' : 'Approve'}
                         </button>
                         <button
                           onClick={() => act(fb._id, 'delete')}
                           disabled={!!acting[fb._id]}
-                          className="text-xs text-red-400 hover:text-red-600 font-medium transition-colors disabled:opacity-40"
+                          className="text-xs text-red-500 hover:text-red-400 font-medium transition-colors disabled:opacity-40"
                         >
                           {acting[fb._id] === 'delete' ? '...' : 'Delete'}
                         </button>

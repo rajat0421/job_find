@@ -2,7 +2,8 @@ const cron = require('node-cron');
 const User = require('../models/User');
 const UserJob = require('../models/UserJob');
 const EmailLog = require('../models/EmailLog');
-const { sendJobDigestEmail } = require('../services/email.service');
+const Config = require('../models/Config');
+const { sendJobDigestEmail, sendAdminDigestCopy } = require('../services/email.service');
 
 const getISTHour = () => {
   // IST = UTC + 5:30 — avoid toLocaleString which returns "24" at midnight in some runtimes
@@ -30,6 +31,9 @@ const sendDigest = async () => {
   if (!due.length) return;
   console.log(`[EmailDigest] ${due.length} user(s) due`);
 
+  const adminCfg = await Config.findOne({ key: 'adminNotificationEmail' });
+  const adminEmail = adminCfg?.value || null;
+
   for (const user of due) {
     const newJobs = await UserJob.find({
       userId: user._id,
@@ -42,12 +46,20 @@ const sendDigest = async () => {
 
     if (!newJobs.length) continue;
 
+    const jobsPayload = newJobs.map((uj) => ({ job: uj.jobId, score: uj.score }));
+    const sentAt = new Date();
+
     try {
-      await sendJobDigestEmail(user.email, user.name || 'there', newJobs.map((uj) => ({ job: uj.jobId, score: uj.score })));
+      await sendJobDigestEmail(user.email, user.name || 'there', jobsPayload);
       await UserJob.updateMany({ _id: { $in: newJobs.map((uj) => uj._id) } }, { emailed: true });
-      await User.updateOne({ _id: user._id }, { lastEmailedAt: new Date() });
+      await User.updateOne({ _id: user._id }, { lastEmailedAt: sentAt });
       await EmailLog.create({ userId: user._id, email: user.email, name: user.name || '', jobCount: newJobs.length });
       console.log(`[EmailDigest] Sent to ${user.email} — ${newJobs.length} jobs`);
+
+      if (adminEmail) {
+        sendAdminDigestCopy(adminEmail, user.email, user.name || 'there', sentAt, jobsPayload)
+          .catch((err) => console.error(`[EmailDigest] Admin copy failed:`, err.message));
+      }
     } catch (err) {
       console.error(`[EmailDigest] Failed for ${user.email}:`, err.message);
     }

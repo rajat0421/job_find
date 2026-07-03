@@ -23,6 +23,12 @@ const HOUR_LABELS = Array.from({ length: 24 }, (_, i) => {
 export default function AdminEmailLogs() {
   const navigate = useNavigate();
 
+  // Admin notification email
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminEmailInput, setAdminEmailInput] = useState('');
+  const [emailSaving, setEmailSaving] = useState(false);
+  const [emailSaveMsg, setEmailSaveMsg] = useState('');
+
   // Global schedule state
   const [stats, setStats] = useState(null);
   const [interval, setInterval] = useState(24);
@@ -62,7 +68,28 @@ export default function AdminEmailLogs() {
     }
   };
 
+  const fetchConfig = async () => {
+    const { data } = await adminApi.get('/admin/config');
+    const val = data.adminNotificationEmail || '';
+    setAdminEmail(val);
+    setAdminEmailInput(val);
+  };
+
+  const handleSaveEmail = async () => {
+    setEmailSaving(true); setEmailSaveMsg('');
+    try {
+      await adminApi.patch('/admin/config', { adminNotificationEmail: adminEmailInput.trim() });
+      setAdminEmail(adminEmailInput.trim());
+      setEmailSaveMsg('✓ Saved');
+    } catch { setEmailSaveMsg('Failed'); }
+    finally {
+      setEmailSaving(false);
+      setTimeout(() => setEmailSaveMsg(''), 3000);
+    }
+  };
+
   useEffect(() => {
+    fetchConfig();
     fetchStats();
     fetchLogs(1);
   }, []);
@@ -105,56 +132,102 @@ export default function AdminEmailLogs() {
     fetchLogs(1);
   };
 
+  const navBtn = (label, active, onClick) => (
+    <button
+      onClick={onClick}
+      className={`text-sm px-3 py-1.5 rounded-lg transition-colors font-medium ${
+        active ? 'text-violet-400 bg-violet-500/10' : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
+      }`}
+    >
+      {label}
+    </button>
+  );
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
+    <div className="min-h-screen bg-[#0a0a12]">
+      <div className="bg-[#12121c] border-b border-white/10 px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <span className="text-xl font-bold text-blue-600">JobFind</span>
-          <span className="text-xs bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-medium">Admin</span>
+          <span className="text-xl font-bold text-violet-400">JobFind</span>
+          <span className="text-xs bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-medium">Admin</span>
           <nav className="flex items-center gap-1 ml-4">
-            <button onClick={() => navigate('/admin')} className="text-sm text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">Users</button>
-            <button onClick={() => navigate('/admin/logs')} className="text-sm text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">API Logs</button>
-            <button className="text-sm font-semibold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg">Email Logs</button>
-            <button onClick={() => navigate('/admin/feedback')} className="text-sm text-gray-500 hover:text-gray-800 px-3 py-1.5 rounded-lg hover:bg-gray-100 transition-colors">Feedback</button>
+            {navBtn('Users', false, () => navigate('/admin'))}
+            {navBtn('API Logs', false, () => navigate('/admin/logs'))}
+            {navBtn('Email Logs', true, null)}
+            {navBtn('Feedback', false, () => navigate('/admin/feedback'))}
           </nav>
         </div>
-        <button onClick={() => { localStorage.removeItem('adminToken'); navigate('/admin'); }} className="text-sm text-red-500 hover:text-red-700 font-medium">
+        <button onClick={() => { localStorage.removeItem('adminToken'); navigate('/admin'); }} className="text-sm text-red-400 hover:text-red-300 font-medium">
           Exit admin
         </button>
       </div>
 
       <div className="max-w-5xl mx-auto px-6 py-8 space-y-8">
 
-        {/* Global Email Schedule */}
-        <div className="bg-white border border-gray-200 rounded-xl p-6">
-          <h2 className="text-sm font-semibold text-gray-800 mb-1">Global Email Schedule</h2>
-          <p className="text-xs text-gray-400 mb-5">Applies to all onboarded + verified users at once. Overrides individual settings.</p>
+        {/* Admin Notification Email */}
+        <div className="bg-[#12121c] border border-white/10 rounded-xl p-6">
+          <h2 className="text-sm font-semibold text-slate-200 mb-1">Admin Notification Email</h2>
+          <p className="text-xs text-slate-600 mb-4">
+            Every time a job email is sent to a user, a copy (with the same jobs) will be forwarded to this address.
+            {adminEmail && <span className="text-violet-400 ml-1">Currently: {adminEmail}</span>}
+          </p>
+          <div className="flex gap-3 items-center flex-wrap">
+            <input
+              type="email"
+              value={adminEmailInput}
+              onChange={(e) => setAdminEmailInput(e.target.value)}
+              placeholder="e.g. rajattalekar5143@gmail.com"
+              className="bg-[#1a1a28] border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-300 w-72 focus:outline-none focus:ring-2 focus:ring-violet-500 placeholder:text-slate-600"
+            />
+            <button
+              onClick={handleSaveEmail}
+              disabled={emailSaving}
+              className="bg-violet-600 text-white text-sm px-5 py-2 rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-60 font-semibold"
+            >
+              {emailSaving ? 'Saving…' : 'Save'}
+            </button>
+            {adminEmail && (
+              <button
+                onClick={() => { setAdminEmailInput(''); handleSaveEmail(); }}
+                className="text-xs text-slate-600 hover:text-red-400 transition-colors"
+              >
+                Remove
+              </button>
+            )}
+            {emailSaveMsg && (
+              <span className={`text-sm font-medium ${emailSaveMsg.startsWith('✓') ? 'text-green-400' : 'text-red-400'}`}>
+                {emailSaveMsg}
+              </span>
+            )}
+          </div>
+        </div>
 
-          {/* Stats strip */}
+        {/* Global Email Schedule */}
+        <div className="bg-[#12121c] border border-white/10 rounded-xl p-6">
+          <h2 className="text-sm font-semibold text-slate-200 mb-1">Global Email Schedule</h2>
+          <p className="text-xs text-slate-600 mb-5">Applies to all onboarded + verified users at once. Overrides individual settings.</p>
+
           {stats && (
             <div className="flex gap-4 mb-6 flex-wrap">
-              <div className="bg-blue-50 border border-blue-100 rounded-lg px-4 py-2.5 flex flex-col">
-                <span className="text-xs text-blue-400 font-medium">Total users</span>
-                <span className="text-lg font-bold text-blue-700">{stats.total}</span>
+              <div className="bg-violet-500/10 border border-violet-500/20 rounded-lg px-4 py-2.5 flex flex-col">
+                <span className="text-xs text-violet-400 font-medium">Total users</span>
+                <span className="text-lg font-bold text-violet-300">{stats.total}</span>
               </div>
-              <div className="bg-orange-50 border border-orange-100 rounded-lg px-4 py-2.5 flex flex-col">
+              <div className="bg-orange-500/10 border border-orange-500/20 rounded-lg px-4 py-2.5 flex flex-col">
                 <span className="text-xs text-orange-400 font-medium">Paused</span>
-                <span className="text-lg font-bold text-orange-600">{stats.paused}</span>
+                <span className="text-lg font-bold text-orange-300">{stats.paused}</span>
               </div>
               {stats.byInterval.map((s) => (
-                <div key={s._id} className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5 flex flex-col">
-                  <span className="text-xs text-gray-400 font-medium">Every {s._id}h</span>
-                  <span className="text-lg font-bold text-gray-700">{s.count} users</span>
+                <div key={s._id} className="bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 flex flex-col">
+                  <span className="text-xs text-slate-500 font-medium">Every {s._id}h</span>
+                  <span className="text-lg font-bold text-slate-300">{s.count} users</span>
                 </div>
               ))}
             </div>
           )}
 
-          {/* Controls */}
           <div className="flex items-end gap-4 flex-wrap">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-gray-500">Send frequency</label>
+              <label className="text-xs font-medium text-slate-500">Send frequency</label>
               <div className="flex gap-2">
                 {[1, 5, 24].map((h) => (
                   <button
@@ -162,8 +235,8 @@ export default function AdminEmailLogs() {
                     onClick={() => setInterval(h)}
                     className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${
                       interval === h
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                        ? 'bg-violet-600 text-white border-violet-600'
+                        : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-200'
                     }`}
                   >
                     {h === 1 ? 'Every 1h' : h === 5 ? 'Every 5h' : 'Once daily'}
@@ -174,15 +247,13 @@ export default function AdminEmailLogs() {
 
             {interval === 24 && (
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-medium text-gray-500">Send time (IST)</label>
+                <label className="text-xs font-medium text-slate-500">Send time (IST)</label>
                 <select
                   value={hourIST}
                   onChange={(e) => setHourIST(Number(e.target.value))}
-                  className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 bg-white"
+                  className="bg-[#1a1a28] border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-violet-500"
                 >
-                  {HOUR_LABELS.map((label, i) => (
-                    <option key={i} value={i}>{label}</option>
-                  ))}
+                  {HOUR_LABELS.map((label, i) => <option key={i} value={i}>{label}</option>)}
                 </select>
               </div>
             )}
@@ -191,16 +262,14 @@ export default function AdminEmailLogs() {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="bg-blue-600 text-white text-sm px-5 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-60 font-semibold"
+                className="bg-violet-600 text-white text-sm px-5 py-2 rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-60 font-semibold"
               >
                 {saving ? 'Applying…' : 'Apply to all users'}
               </button>
               {saveMsg && (
-                <span className={`text-sm font-medium ${saveMsg.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>
-                  {saveMsg}
-                </span>
+                <span className={`text-sm font-medium ${saveMsg.startsWith('✓') ? 'text-green-400' : 'text-red-400'}`}>{saveMsg}</span>
               )}
-              <div className="w-px h-6 bg-gray-200 mx-1" />
+              <div className="w-px h-6 bg-white/10 mx-1" />
               <button
                 onClick={handleTrigger}
                 disabled={triggering}
@@ -209,9 +278,7 @@ export default function AdminEmailLogs() {
                 {triggering ? 'Sending…' : '▶ Send emails now'}
               </button>
               {triggerMsg && (
-                <span className={`text-sm font-medium ${triggerMsg.startsWith('✓') ? 'text-green-600' : 'text-red-500'}`}>
-                  {triggerMsg}
-                </span>
+                <span className={`text-sm font-medium ${triggerMsg.startsWith('✓') ? 'text-green-400' : 'text-red-400'}`}>{triggerMsg}</span>
               )}
             </div>
           </div>
@@ -225,41 +292,39 @@ export default function AdminEmailLogs() {
               placeholder="Filter by email…"
               value={emailFilter}
               onChange={(e) => setEmailFilter(e.target.value)}
-              className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-64 focus:outline-none focus:ring-2 focus:ring-blue-300"
+              className="bg-[#1a1a28] border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-300 w-64 focus:outline-none focus:ring-2 focus:ring-violet-500 placeholder:text-slate-600"
             />
-            <button type="submit" className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors">
-              Search
-            </button>
+            <button type="submit" className="bg-violet-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-violet-700 transition-colors">Search</button>
             {emailFilter && (
-              <button type="button" onClick={() => { setEmailFilter(''); fetchLogs(1, ''); }} className="text-sm text-gray-500 hover:text-gray-800 px-3 py-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+              <button type="button" onClick={() => { setEmailFilter(''); fetchLogs(1, ''); }} className="text-sm text-slate-500 hover:text-slate-300 px-3 py-2 rounded-lg border border-white/10 hover:bg-white/5 transition-colors">
                 Clear
               </button>
             )}
-            <span className="ml-auto text-sm text-gray-500 self-center">{total} email{total !== 1 ? 's' : ''} sent</span>
+            <span className="ml-auto text-sm text-slate-500 self-center">{total} email{total !== 1 ? 's' : ''} sent</span>
           </form>
 
-          <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+          <div className="bg-[#12121c] border border-white/10 rounded-xl overflow-hidden">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="border-b border-white/10">
                 <tr>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Sent at (IST)</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Email</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Jobs</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Sent at (IST)</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Name</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Email</th>
+                  <th className="text-center px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Jobs</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-white/[0.06]">
                 {loading ? (
-                  <tr><td colSpan={4} className="text-center py-12 text-gray-400">Loading…</td></tr>
+                  <tr><td colSpan={4} className="text-center py-12 text-slate-600">Loading…</td></tr>
                 ) : logs.length === 0 ? (
-                  <tr><td colSpan={4} className="text-center py-12 text-gray-400">No emails sent yet</td></tr>
+                  <tr><td colSpan={4} className="text-center py-12 text-slate-600">No emails sent yet</td></tr>
                 ) : logs.map((log) => (
-                  <tr key={log._id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 font-mono text-xs text-gray-600 whitespace-nowrap">{toIST(log.sentAt)}</td>
-                    <td className="px-4 py-3 text-gray-800 font-medium">{log.name || '—'}</td>
-                    <td className="px-4 py-3 text-gray-600">{log.email}</td>
+                  <tr key={log._id} className="hover:bg-white/[0.03] transition-colors">
+                    <td className="px-4 py-3 font-mono text-xs text-slate-500 whitespace-nowrap">{toIST(log.sentAt)}</td>
+                    <td className="px-4 py-3 text-slate-200 font-medium">{log.name || '—'}</td>
+                    <td className="px-4 py-3 text-slate-400">{log.email}</td>
                     <td className="px-4 py-3 text-center">
-                      <span className="inline-block bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full">
+                      <span className="inline-block bg-green-500/10 text-green-400 text-xs font-semibold px-2 py-0.5 rounded-full">
                         {log.jobCount} job{log.jobCount !== 1 ? 's' : ''}
                       </span>
                     </td>
@@ -271,13 +336,9 @@ export default function AdminEmailLogs() {
 
           {pages > 1 && (
             <div className="flex justify-center gap-2 mt-6">
-              <button disabled={page <= 1} onClick={() => fetchLogs(page - 1)} className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-100 disabled:opacity-40">
-                ← Prev
-              </button>
-              <span className="px-4 py-2 text-sm text-gray-500">Page {page} of {pages}</span>
-              <button disabled={page >= pages} onClick={() => fetchLogs(page + 1)} className="px-4 py-2 text-sm border border-gray-200 rounded-lg hover:bg-gray-100 disabled:opacity-40">
-                Next →
-              </button>
+              <button disabled={page <= 1} onClick={() => fetchLogs(page - 1)} className="px-4 py-2 text-sm border border-white/10 text-slate-400 rounded-lg hover:bg-white/5 disabled:opacity-40">← Prev</button>
+              <span className="px-4 py-2 text-sm text-slate-500">Page {page} of {pages}</span>
+              <button disabled={page >= pages} onClick={() => fetchLogs(page + 1)} className="px-4 py-2 text-sm border border-white/10 text-slate-400 rounded-lg hover:bg-white/5 disabled:opacity-40">Next →</button>
             </div>
           )}
         </div>

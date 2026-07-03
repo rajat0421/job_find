@@ -5,6 +5,7 @@ const Job = require('../models/Job');
 const UserJob = require('../models/UserJob');
 const RequestLog = require('../models/RequestLog');
 const EmailLog = require('../models/EmailLog');
+const Config = require('../models/Config');
 const { scoreJob, scoreJobWithBreakdown } = require('../services/jobMatcher.service');
 
 const generateJobHash = (title, company, location) =>
@@ -324,6 +325,31 @@ const getLogs = async (req, res) => {
   }
 };
 
+const getConfig = async (_req, res) => {
+  try {
+    const docs = await Config.find().lean();
+    const cfg = {};
+    docs.forEach((d) => { cfg[d.key] = d.value; });
+    res.json(cfg);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const updateConfig = async (req, res) => {
+  try {
+    const updates = req.body; // { key: value, ... }
+    await Promise.all(
+      Object.entries(updates).map(([key, value]) =>
+        Config.findOneAndUpdate({ key }, { key, value }, { upsert: true })
+      )
+    );
+    res.json({ message: 'Config updated' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 const triggerEmailDigest = async (_req, res) => {
   try {
     const { sendDigest } = require('../jobs/dailyEmail.job');
@@ -403,4 +429,4 @@ const getJobBreakdown = async (req, res) => {
   }
 };
 
-module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, fixGreenhouseDescriptions, rescoreAllUsers, getLogs, getEmailLogs, getJobBreakdown };
+module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, getConfig, updateConfig, fixGreenhouseDescriptions, rescoreAllUsers, getLogs, getEmailLogs, getJobBreakdown };

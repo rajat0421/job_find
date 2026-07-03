@@ -14,24 +14,38 @@ const generateJobHash = (title, company, location) =>
 // Fetch + score Adzuna jobs live for a specific user (no DB save)
 const runAdzunaForUser = async (user) => {
   const roles = user.desiredRoles?.length ? user.desiredRoles : [];
-  const what = roles.length
-    ? roles.slice(0, 2).join(' ')
-    : (user.skills?.slice(0, 3).join(' ') || 'software developer');
   const where = user.locations?.[0] || 'India';
-
-  const params = {
-    app_id: process.env.ADZUNA_APP_ID,
-    app_key: process.env.ADZUNA_APP_KEY,
-    results_per_page: 50,
-    what,
-    where,
-  };
-
+  const appId = process.env.ADZUNA_APP_ID;
+  const appKey = process.env.ADZUNA_APP_KEY;
   const url = 'https://api.adzuna.com/v1/api/jobs/in/search/1';
-  const response = await axios.get(url, { params });
-  const rawJobs = response.data.results || [];
 
-  const scored = rawJobs
+  // Build queries: one from roles, one from skills (if skills differ from roles)
+  const queries = [];
+  if (roles.length) queries.push({ label: 'roles', what: roles.slice(0, 2).join(' ') });
+  if (user.skills?.length) queries.push({ label: 'skills', what: user.skills.slice(0, 3).join(' ') });
+  if (!queries.length) queries.push({ label: 'default', what: 'software developer' });
+
+  const requests = [];
+  const seenUrls = new Set();
+  const allRaw = [];
+
+  for (const q of queries) {
+    const params = { app_id: appId, app_key: appKey, results_per_page: 50, what: q.what, where };
+    requests.push({ label: q.label, params: { ...params, app_key: '***hidden***' } });
+    try {
+      const response = await axios.get(url, { params });
+      for (const j of (response.data.results || [])) {
+        const link = j.redirect_url;
+        if (seenUrls.has(link)) continue; // dedup across queries
+        seenUrls.add(link);
+        allRaw.push(j);
+      }
+    } catch (err) {
+      console.error(`[AdminRunAPI] Adzuna query "${q.what}" failed:`, err.message);
+    }
+  }
+
+  const scored = allRaw
     .map((j) => {
       const jobObj = {
         title: j.title?.label || j.title || '',
@@ -48,9 +62,9 @@ const runAdzunaForUser = async (user) => {
 
   return {
     platform: 'Adzuna',
-    request: { method: 'GET', url, params: { ...params, app_key: '***hidden***' } },
-    total_fetched: rawJobs.length,
-    raw_results: rawJobs,
+    requests,
+    total_fetched: allRaw.length,
+    raw_results: allRaw,
     matched: scored.filter((j) => j.score >= 40),
     filtered_out: scored.filter((j) => j.score < 40),
   };

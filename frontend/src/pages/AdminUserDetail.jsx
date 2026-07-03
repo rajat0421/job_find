@@ -406,13 +406,16 @@ const AdminUserDetail = () => {
 
                     {!platform.error && (
                       <>
-                        {platform.request && (
-                          <Section title="📤 Request">
-                            <div className="mb-2 flex gap-3 text-xs text-slate-500">
-                              <span className="font-mono bg-white/5 px-2 py-1 rounded">{platform.request.method}</span>
-                              <span className="font-mono bg-white/5 px-2 py-1 rounded break-all">{platform.request.url}</span>
+                        {platform.requests?.length > 0 && (
+                          <Section title={`📤 Requests (${platform.requests.length})`}>
+                            <div className="flex flex-col gap-3">
+                              {platform.requests.map((req, ri) => (
+                                <div key={ri}>
+                                  <p className="text-xs text-slate-500 mb-1 font-medium uppercase tracking-wide">Query {ri + 1} — {req.label}</p>
+                                  <JsonBlock data={req.params} />
+                                </div>
+                              ))}
                             </div>
-                            <JsonBlock data={platform.request.params} />
                           </Section>
                         )}
 

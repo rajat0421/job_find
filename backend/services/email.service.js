@@ -11,7 +11,14 @@ const sendHtmlEmail = async (to, subject, html) => {
       },
     }
   );
-  return res.data;
+
+  // Guard against a 200-but-failed response (silent failure) so the digest job
+  // logs it as 'failed' with a real reason instead of falsely marking it 'sent'.
+  const data = res.data;
+  if (data && (data.success === false || data.error || data.ok === false)) {
+    throw new Error(data.error || data.message || 'Email provider reported failure');
+  }
+  return data;
 };
 
 const sendOtpEmail = (to, otp) =>

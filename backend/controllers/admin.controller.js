@@ -19,10 +19,14 @@ const runAdzunaForUser = async (user) => {
   const appKey = process.env.ADZUNA_APP_KEY;
   const url = 'https://api.adzuna.com/v1/api/jobs/in/search/1';
 
-  // Build queries: one from roles, one from skills (if skills differ from roles)
+  // One query per role + one query per skill
   const queries = [];
-  if (roles.length) queries.push({ label: 'roles', what: roles.slice(0, 2).join(' ') });
-  if (user.skills?.length) queries.push({ label: 'skills', what: user.skills.slice(0, 3).join(' ') });
+  if (roles.length) {
+    roles.slice(0, 2).forEach(r => queries.push({ label: `role: ${r}`, what: r }));
+  }
+  if (user.skills?.length) {
+    user.skills.forEach(s => queries.push({ label: `skill: ${s}`, what: s }));
+  }
   if (!queries.length) queries.push({ label: 'default', what: 'software developer' });
 
   const requests = [];

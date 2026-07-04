@@ -47,10 +47,20 @@ const sendDigest = async () => {
       .populate('jobId');
 
     if (!newJobs.length) {
-      const totalUnread = await UserJob.countDocuments({ userId: user._id, emailed: false });
-      const reason = totalUnread === 0
-        ? 'No matched jobs yet'
-        : `${totalUnread} matched job(s) but none scored ≥ 50`;
+      const [totalMatched, totalUnread] = await Promise.all([
+        UserJob.countDocuments({ userId: user._id }),
+        UserJob.countDocuments({ userId: user._id, emailed: false }),
+      ]);
+
+      let reason;
+      if (totalMatched === 0) {
+        reason = 'No matching jobs found for this profile yet';
+      } else if (totalUnread === 0) {
+        reason = `Already notified — all ${totalMatched} matching job(s) were sent in earlier emails`;
+      } else {
+        reason = `${totalUnread} new job(s) found, but none scored ≥ 50 (below the email threshold)`;
+      }
+
       console.log(`[EmailDigest] Skipped ${user.email} — ${reason}`);
       await EmailLog.create({ userId: user._id, email: user.email, name: user.name || '', jobCount: 0, status: 'skipped', reason });
       continue;

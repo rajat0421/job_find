@@ -1,17 +1,23 @@
 const axios = require('axios');
 const crypto = require('crypto');
 const Job = require('../models/Job');
-const User = require('../models/User');
 
 const generateJobHash = (title, company, location) =>
   crypto.createHash('md5').update(`${title}-${company}-${location}`).digest('hex');
 
-const PAGES_PER_QUERY = 2;
+// Fetch is DECOUPLED from users — always fetches the same curated categories so
+// ingestion is predictable regardless of who's registered. Edit categories in
+// data/adzunaCategories.json only. Matching (per-user) happens later, separately.
+const CATEGORIES = require('../data/adzunaCategories.json');
 
-// Fetch one query (role or skill), store new jobs in DB, return count of new jobs saved
-const fetchForQuery = async (appId, appKey, what) => {
+// NOTE on API budget: CATEGORIES.length × MAX_PAGES calls per fetch cycle.
+// 20 categories × 2 pages = 40 calls/hour ≈ 960/day. Keep an eye on your Adzuna
+// plan's daily quota — raise MAX_PAGES or trim categories to fit.
+const MAX_PAGES = 2;
+
+const fetchForCategory = async (appId, appKey, what) => {
   let newCount = 0;
-  for (let page = 1; page <= PAGES_PER_QUERY; page++) {
+  for (let page = 1; page <= MAX_PAGES; page++) {
     try {
       const response = await axios.get('https://api.adzuna.com/v1/api/jobs/in/search/' + page, {
         params: { app_id: appId, app_key: appKey, results_per_page: 50, what, where: 'India' },
@@ -19,7 +25,7 @@ const fetchForQuery = async (appId, appKey, what) => {
       });
 
       const jobs = response.data.results || [];
-      if (!jobs.length) break;
+      if (!jobs.length) break; // stop paginating this category once results dry up
 
       for (const j of jobs) {
         const title = j.title?.label || j.title || '';
@@ -42,7 +48,7 @@ const fetchForQuery = async (appId, appKey, what) => {
         newCount++;
       }
     } catch (err) {
-      console.error(`[Adzuna] Failed for query="${what}" page=${page}:`, err.message);
+      console.error(`[Adzuna] Failed for "${what}" page=${page}:`, err.message);
       break;
     }
   }
@@ -56,29 +62,16 @@ const fetchJobs = async () => {
     return 0;
   }
 
-  // Build query set from every active user's roles + skills
-  const users = await User.find({ isOnboarded: true, isEmailVerified: true })
-    .select('desiredRoles skills').lean();
-
-  const querySet = new Set();
-  for (const user of users) {
-    for (const r of (user.desiredRoles || [])) querySet.add(r.trim());
-    for (const s of (user.skills || [])) querySet.add(s.trim());
-  }
-
-  if (!querySet.size) querySet.add('software developer');
-
-  const queries = Array.from(querySet);
-  console.log(`[Adzuna] ${queries.length} queries from ${users.length} user(s): ${queries.join(', ')}`);
+  console.log(`[Adzuna] Fetching ${CATEGORIES.length} categories × ${MAX_PAGES} pages = up to ${CATEGORIES.length * MAX_PAGES} calls`);
 
   let totalNew = 0;
-  for (const what of queries) {
-    const count = await fetchForQuery(appId, appKey, what);
+  for (const what of CATEGORIES) {
+    const count = await fetchForCategory(appId, appKey, what);
     if (count > 0) console.log(`[Adzuna] "${what}" → ${count} new jobs`);
     totalNew += count;
   }
 
-  console.log(`[Adzuna] Done — ${totalNew} new jobs saved across ${queries.length} queries`);
+  console.log(`[Adzuna] Done — ${totalNew} new jobs saved across ${CATEGORIES.length} categories`);
   return totalNew;
 };
 

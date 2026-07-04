@@ -27,16 +27,17 @@ const SKILL_SYNONYMS = {
 
 const normalizeSkill = (skill) => skill.toLowerCase().replace(/[.\s-]/g, '');
 
-const countSkillMatches = (userSkills, jobText) => {
+// Returns the list of user skills that appear in the job text (name or synonym)
+const getMatchedSkills = (userSkills, jobText) => {
   const text = jobText.toLowerCase();
-  let matched = 0;
+  const matched = [];
   for (const skill of userSkills) {
     const n = normalizeSkill(skill);
-    if (text.includes(n)) { matched++; continue; }
+    if (text.includes(n)) { matched.push(skill); continue; }
     const synonyms = SKILL_SYNONYMS[n] || [];
-    if (synonyms.some((s) => text.includes(s))) matched++;
+    if (synonyms.some((s) => text.includes(s))) matched.push(skill);
   }
-  return { matched, total: userSkills.length };
+  return matched;
 };
 
 // ── Role → title keyword mapping ──────────────────────────────────────────────
@@ -62,14 +63,39 @@ const ROLE_KEYWORDS = {
   'Engineering Manager':  ['engineering manager', 'head of engineering', 'vp of engineering', 'vp engineering', 'director of engineering'],
 };
 
-// Applied only when user has NOT set any desiredRoles — filters obvious non-engineering titles
+// Backstop filter: drops obvious non-tech titles when a job has NO role affinity at all.
+// (A job that matches the user's role or a generic tech keyword is never blacklisted.)
 const TITLE_BLACKLIST = [
-  'manager', 'director', 'vice president', ' vp ', 'head of',
-  'chief ', 'president', 'sales', 'marketing', 'recruiter',
-  'talent acquisition', 'human resources', 'account executive',
-  'customer success', 'scrum master', 'agile coach',
-  'technical account', 'solution architect', 'solutions architect',
+  'sales', 'marketing', 'recruiter', 'talent acquisition', 'human resources',
+  'account executive', 'customer success', 'scrum master', 'agile coach',
+  'technical account',
 ];
+
+// Generic signals that a title is a tech/engineering role even if it doesn't match
+// the user's exact desiredRole — enables similarity-based (not pass/fail) role scoring.
+const GENERIC_TECH_KEYWORDS = [
+  'engineer', 'developer', 'programmer', 'architect', 'consultant',
+  'analyst', 'scientist', 'administrator', 'sde', 'swe', 'devops', 'technical',
+];
+
+// Graded role affinity (0..40) instead of a hard pass/fail gate.
+//   • exact match to one of the user's roles → 40
+//   • related tech role (generic keyword)    → 15  (e.g. Backend job for a Frontend user)
+//   • no tech signal                          → 0
+// Returns { score, matchedRole } — matchedRole is the exact role hit, or null.
+const scoreRole = (titleLower, roles) => {
+  if (roles.length) {
+    for (const r of roles) {
+      const keywords = ROLE_KEYWORDS[r] || [r.toLowerCase()];
+      if (keywords.some((k) => titleLower.includes(k))) return { score: 40, matchedRole: r };
+    }
+    if (GENERIC_TECH_KEYWORDS.some((k) => titleLower.includes(k))) return { score: 15, matchedRole: null };
+    return { score: 0, matchedRole: null };
+  }
+  // No roles set → neutral if it looks like a tech role
+  if (GENERIC_TECH_KEYWORDS.some((k) => titleLower.includes(k))) return { score: 20, matchedRole: null };
+  return { score: 0, matchedRole: null };
+};
 
 // ── Experience ────────────────────────────────────────────────────────────────
 const EXP_HINTS = {
@@ -89,43 +115,42 @@ const getUserLevel = (exp) => {
 const SENIOR_TITLE_PATTERNS = ['senior', 'lead', 'sr.', 'principal', 'staff'];
 
 // ── Scoring weights: role(40) + skills(30) + exp(15) + location(10) + salary(5)
-const scoreJob = (user, job) => {
-  const titleLower = job.title.toLowerCase();
-
-  // ── Step 1: Role filter / blacklist ─────────────────────────────────────────
-  const roles = user.desiredRoles || [];
-  if (roles.length) {
-    // User has specified roles → job title MUST match at least one
-    const allKeywords = roles.flatMap(r => ROLE_KEYWORDS[r] || [r.toLowerCase()]);
-    if (!allKeywords.some((k) => titleLower.includes(k))) return 0;
-  } else {
-    // No role specified → at least filter out obvious non-engineering titles
-    if (TITLE_BLACKLIST.some((term) => titleLower.includes(term))) return 0;
-  }
-
-  let score = 0;
-
-  // ── Step 2: Role score (40 if role set, 20 neutral) ─────────────────────────
-  score += roles.length ? 40 : 20;
-
-  // ── Step 3: Skill matching (up to 30 pts, must match ≥1 if user has skills) ─
+// Returns { score, matchedSkills, matchedRole, reasons } — a human-readable
+// explanation stored alongside the score so the UI can show WHY a job matched.
+const scoreJobDetailed = (user, job) => {
+  const titleLower = (job.title || '').toLowerCase();
   const text = `${job.title} ${job.description || ''}`.toLowerCase();
+  const empty = { score: 0, matchedSkills: [], matchedRole: null, reasons: [] };
+  const reasons = [];
+
+  // ── Step 1: Role (0..40, graded — not a hard gate) ───────────────────────────
+  const roles = user.desiredRoles || [];
+  const role = scoreRole(titleLower, roles);
+  // Backstop: only drop when there's NO role affinity AND the title is clearly non-tech
+  if (role.score === 0 && TITLE_BLACKLIST.some((t) => titleLower.includes(t))) return empty;
+  let score = role.score;
+  if (role.matchedRole) reasons.push(`Fits your ${role.matchedRole} role`);
+  else if (role.score > 0 && roles.length) reasons.push('Related tech role');
+
+  // ── Step 2: Skills (gate — must match ≥1 if user has skills; up to 30 pts) ────
+  let matchedSkills = [];
   if (user.skills?.length) {
-    const { matched } = countSkillMatches(user.skills, text);
-    if (matched === 0) return 0;
-    score += Math.min(15 + (matched - 1) * 5, 30); // 1→15, 2→20, 3→25, 4+→30
+    matchedSkills = getMatchedSkills(user.skills, text);
+    if (matchedSkills.length === 0) return empty; // skills are the core relevance signal
+    score += Math.min(15 + (matchedSkills.length - 1) * 5, 30); // 1→15, 2→20, 3→25, 4+→30
+    reasons.push(`Matches your ${matchedSkills.slice(0, 3).join(', ')} skill${matchedSkills.length > 1 ? 's' : ''}`);
   }
 
-  // ── Step 4: Location (10 pts) ────────────────────────────────────────────────
+  // ── Step 3: Location (10 pts) ────────────────────────────────────────────────
   const jobLoc = (job.location || '').toLowerCase();
   const isRemote = jobLoc.includes('remote');
-  const locMatch = (user.locations || []).some((l) => jobLoc.includes(l.toLowerCase()));
-  if (locMatch) score += 10;
-  else if (isRemote && user.remotePreference !== 'office') score += 8;
+  const locHit = (user.locations || []).find((l) => jobLoc.includes(l.toLowerCase()));
+  if (locHit) { score += 10; reasons.push(`Located in ${locHit}`); }
+  else if (isRemote && user.remotePreference !== 'office') { score += 8; reasons.push('Remote position'); }
 
-  // ── Step 5: Salary (5 pts) ───────────────────────────────────────────────────
+  // ── Step 4: Salary (5 pts) ───────────────────────────────────────────────────
   if (user.salary) {
-    const low  = user.salary * 0.70;
+    const low = user.salary * 0.70;
     const high = user.salary * 1.50;
     const { salaryMax: jMax, salaryMin: jMin } = job;
     if      (jMax && jMin) { if (jMax >= low && jMin <= high) score += 5; }
@@ -136,13 +161,13 @@ const scoreJob = (user, job) => {
     score += 3; // user hasn't set expectation = neutral
   }
 
-  // ── Step 6: Experience (15 pts) ──────────────────────────────────────────────
+  // ── Step 5: Experience (15 pts) ──────────────────────────────────────────────
   const { primary, adjacent } = getUserLevel(user.experience ?? 0);
   const allHints = Object.values(EXP_HINTS).flat();
   const hasAnyHint = allHints.some((h) => text.includes(h));
-
   if (EXP_HINTS[primary].some((h) => text.includes(h))) {
     score += 15;
+    reasons.push(primary === 'junior' ? 'Fresher / junior friendly' : `Suited to ${primary}-level experience`);
   } else if (adjacent && EXP_HINTS[adjacent].some((h) => text.includes(h))) {
     score += 8;
   } else if (!hasAnyHint) {
@@ -150,15 +175,16 @@ const scoreJob = (user, job) => {
   }
   // else: 0 — wrong level explicitly mentioned
 
-  // ── Step 7: Cap junior users for senior IC titles ────────────────────────────
-  if (primary === 'junior') {
-    if (SENIOR_TITLE_PATTERNS.some((p) => titleLower.includes(p))) {
-      score = Math.min(score, 30);
-    }
+  // ── Step 6: Cap junior users for senior IC titles ────────────────────────────
+  if (primary === 'junior' && SENIOR_TITLE_PATTERNS.some((p) => titleLower.includes(p))) {
+    score = Math.min(score, 30);
   }
 
-  return Math.min(score, 100);
+  return { score: Math.min(score, 100), matchedSkills, matchedRole: role.matchedRole, reasons };
 };
+
+// Thin wrapper — most callers just need the number
+const scoreJob = (user, job) => scoreJobDetailed(user, job).score;
 
 const matchJobsForAllUsers = async () => {
   const users = await User.find({ isOnboarded: true, isEmailVerified: true });
@@ -189,9 +215,9 @@ const _matchJobsForUser = async (user, jobs) => {
   const toInsert = [];
   for (const job of jobs) {
     if (existingSet.has(job._id.toString())) continue;
-    const score = scoreJob(user, job);
+    const { score, matchedSkills, matchedRole, reasons } = scoreJobDetailed(user, job);
     if (score === 0) continue;
-    toInsert.push({ userId: user._id, jobId: job._id, score });
+    toInsert.push({ userId: user._id, jobId: job._id, score, matchedSkills, matchedRole, reasons });
   }
 
   if (toInsert.length) {
@@ -206,27 +232,24 @@ const scoreJobWithBreakdown = (user, job) => {
   const text = `${job.title} ${job.description || ''}`.toLowerCase();
   const breakdown = {};
 
-  // ── Role ────────────────────────────────────────────────────────────────────
+  // ── Role (graded — exact 40 / related tech 15 / none 0) ──────────────────────
   const roles = user.desiredRoles || [];
-  if (roles.length) {
-    const allKeywords = roles.flatMap(r => ROLE_KEYWORDS[r] || [r.toLowerCase()]);
-    const hit = allKeywords.find(k => titleLower.includes(k));
-    if (!hit) return { score: 0, breakdown: { role: { score: 0, max: 40, detail: `Title did not match any keyword for: ${roles.join(', ')}` } } };
-    breakdown.role = { score: 40, max: 40, detail: `"${hit}" matched in title → role: ${roles.join(', ')}` };
+  const role = scoreRole(titleLower, roles);
+  if (role.score === 0 && TITLE_BLACKLIST.some(t => titleLower.includes(t))) {
+    return { score: 0, breakdown: { role: { score: 0, max: 40, detail: 'Non-tech title (blacklisted), no role affinity' } } };
+  }
+  if (role.matchedRole) {
+    breakdown.role = { score: 40, max: 40, detail: `Exact match → ${role.matchedRole}` };
+  } else if (role.score > 0) {
+    breakdown.role = { score: role.score, max: 40, detail: roles.length ? 'Related tech role (not an exact role match)' : 'No role set — tech title, neutral' };
   } else {
-    if (TITLE_BLACKLIST.some(t => titleLower.includes(t))) return { score: 0, breakdown: { role: { score: 0, max: 40, detail: 'Non-engineering title (blacklisted) — no role set' } } };
-    breakdown.role = { score: 20, max: 40, detail: 'No role set — neutral score' };
+    breakdown.role = { score: 0, max: 40, detail: roles.length ? `No affinity with: ${roles.join(', ')}` : 'No role set, no tech signal' };
   }
   let score = breakdown.role.score;
 
   // ── Skills ──────────────────────────────────────────────────────────────────
   if (user.skills?.length) {
-    const matched = [];
-    for (const skill of user.skills) {
-      const n = normalizeSkill(skill);
-      if (text.includes(n)) { matched.push(skill); continue; }
-      if ((SKILL_SYNONYMS[n] || []).some(s => text.includes(s))) matched.push(skill);
-    }
+    const matched = getMatchedSkills(user.skills, text);
     if (matched.length === 0) return { score: 0, breakdown: { ...breakdown, skills: { score: 0, max: 30, detail: `0/${user.skills.length} skills found — filtered out` } } };
     const pts = Math.min(15 + (matched.length - 1) * 5, 30);
     breakdown.skills = { score: pts, max: 30, matched, total: user.skills.length, detail: `${matched.length}/${user.skills.length} matched: ${matched.join(', ')}` };
@@ -297,4 +320,4 @@ const scoreJobWithBreakdown = (user, job) => {
   return { score: total, breakdown: { ...breakdown, total } };
 };
 
-module.exports = { matchJobsForAllUsers, matchJobsForUser, scoreJob, scoreJobWithBreakdown };
+module.exports = { matchJobsForAllUsers, matchJobsForUser, scoreJob, scoreJobDetailed, scoreJobWithBreakdown };

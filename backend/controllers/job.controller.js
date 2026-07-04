@@ -23,6 +23,9 @@ const getMatchedJobs = async (req, res) => {
       .map((uj) => ({
         ...uj.jobId.toObject(),
         score: uj.score,
+        matchedSkills: uj.matchedSkills || [],
+        matchedRole: uj.matchedRole || null,
+        reasons: uj.reasons || [],
         saved: uj.saved,
         applied: uj.applied,
         userJobId: uj._id,

@@ -50,6 +50,18 @@ const JobCard = ({ job, onSaveToggle, onApplied }) => {
         )}
       </div>
 
+      {/* Why it matched */}
+      {job.reasons?.length > 0 && (
+        <ul className="flex flex-col gap-1">
+          {job.reasons.map((r, i) => (
+            <li key={i} className="flex items-start gap-1.5 text-xs text-slate-600">
+              <span className="text-emerald-500 mt-px">✓</span>
+              <span>{r}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
       {/* Description */}
       {job.description && (
         <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed">{job.description}</p>

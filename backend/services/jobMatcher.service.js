@@ -143,10 +143,13 @@ const scoreJobDetailed = (user, job) => {
 
   // ── Step 3: Location (10 pts) ────────────────────────────────────────────────
   const jobLoc = (job.location || '').toLowerCase();
-  const isRemote = jobLoc.includes('remote');
+  // Prefer Lever's explicit workplaceType; fall back to scanning the location string
+  const isRemote = job.workplaceType === 'remote' || jobLoc.includes('remote');
+  const isHybrid = job.workplaceType === 'hybrid' || jobLoc.includes('hybrid');
   const locHit = (user.locations || []).find((l) => jobLoc.includes(l.toLowerCase()));
   if (locHit) { score += 10; reasons.push(`Located in ${locHit}`); }
   else if (isRemote && user.remotePreference !== 'office') { score += 8; reasons.push('Remote position'); }
+  else if (isHybrid && user.remotePreference !== 'office') { score += 6; reasons.push('Hybrid position'); }
 
   // ── Step 4: Salary (5 pts) ───────────────────────────────────────────────────
   if (user.salary) {
@@ -267,14 +270,18 @@ const scoreJobWithBreakdown = (user, job) => {
 
   // ── Location ─────────────────────────────────────────────────────────────────
   const jobLoc = (job.location || '').toLowerCase();
-  const isRemote = jobLoc.includes('remote');
+  const isRemote = job.workplaceType === 'remote' || jobLoc.includes('remote');
+  const isHybrid = job.workplaceType === 'hybrid' || jobLoc.includes('hybrid');
   const locHit = (user.locations || []).find(l => jobLoc.includes(l.toLowerCase()));
   if (locHit) {
     breakdown.location = { score: 10, max: 10, detail: `Exact match — "${locHit}" in job location` };
     score += 10;
   } else if (isRemote && user.remotePreference !== 'office') {
-    breakdown.location = { score: 8, max: 10, detail: 'Job is remote — near match' };
+    breakdown.location = { score: 8, max: 10, detail: `Job is remote${job.workplaceType ? ' (workplaceType)' : ''} — near match` };
     score += 8;
+  } else if (isHybrid && user.remotePreference !== 'office') {
+    breakdown.location = { score: 6, max: 10, detail: 'Job is hybrid — partial match' };
+    score += 6;
   } else {
     breakdown.location = { score: 0, max: 10, detail: `No match — job: "${job.location || 'unspecified'}", user wants: ${user.locations?.join(', ') || 'any'}` };
   }

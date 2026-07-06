@@ -158,6 +158,8 @@ const runLeverForUser = async (user) => {
           salaryMax: null,
           description: buildLeverDescription(j),
           applyLink: j.applyUrl || j.hostedUrl || '',
+          workplaceType: j.workplaceType || null,
+          country: j.country || null,
         };
         allJobs.push({ job: jobObj, score: scoreJob(user, jobObj) });
       }

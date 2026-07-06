@@ -71,6 +71,8 @@ const fetchJobs = async () => {
           description: buildDescription(j),
           applyLink,
           source: 'lever',
+          workplaceType: j.workplaceType || null,
+          country: j.country || null,
           hash,
           postedAt: j.createdAt ? new Date(j.createdAt) : null,
         });

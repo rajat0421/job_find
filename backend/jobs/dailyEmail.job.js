@@ -24,12 +24,14 @@ const isDue = (user) => {
   return !user.lastEmailedAt || (now - new Date(user.lastEmailedAt).getTime()) >= intervalMs;
 };
 
-const sendDigest = async () => {
-  console.log(`[EmailDigest] Running at ${new Date().toISOString()}`);
+// force=true (manual "Send emails now") bypasses each user's scheduled hour/interval
+// and sends to anyone with sendable jobs immediately. The cron calls it without force.
+const sendDigest = async ({ force = false } = {}) => {
+  console.log(`[EmailDigest] Running at ${new Date().toISOString()}${force ? ' (forced)' : ''}`);
   const users = await User.find({ isOnboarded: true, isEmailVerified: true, emailPaused: { $ne: true } });
   console.log(`[EmailDigest] ${users.length} eligible user(s) found`);
-  const due = users.filter(isDue);
-  console.log(`[EmailDigest] ${due.length} user(s) due`);
+  const due = force ? users : users.filter(isDue);
+  console.log(`[EmailDigest] ${due.length} user(s) ${force ? 'to process (forced)' : 'due'}`);
 
   if (!due.length) return;
 

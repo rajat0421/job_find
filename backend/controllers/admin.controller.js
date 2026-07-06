@@ -383,7 +383,7 @@ const updateConfig = async (req, res) => {
 const triggerEmailDigest = async (_req, res) => {
   try {
     const { sendDigest } = require('../jobs/dailyEmail.job');
-    await sendDigest();
+    await sendDigest({ force: true });
     res.json({ message: 'Digest triggered' });
   } catch (err) {
     res.status(500).json({ message: err.message });

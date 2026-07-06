@@ -408,11 +408,17 @@ const AdminUserDetail = () => {
                     {!platform.error && (
                       <>
                         {platform.requests?.length > 0 && (
-                          <Section title={`📤 Requests (${platform.requests.length})`}>
+                          <Section title={`📤 Requests (${platform.requests.length})`} collapsed={platform.requests.length > 5}>
                             <div className="flex flex-col gap-3">
                               {platform.requests.map((req, ri) => (
                                 <div key={ri}>
                                   <p className="text-xs text-slate-500 mb-1 font-medium uppercase tracking-wide">Query {ri + 1} — {req.label}</p>
+                                  {req.url && (
+                                    <div className="mb-1 flex gap-2 text-xs text-slate-500 flex-wrap">
+                                      <span className="font-mono bg-white/5 px-2 py-1 rounded">{req.method || 'GET'}</span>
+                                      <span className="font-mono bg-white/5 px-2 py-1 rounded break-all">{req.url}</span>
+                                    </div>
+                                  )}
                                   <JsonBlock data={req.params} />
                                 </div>
                               ))}
@@ -427,11 +433,11 @@ const AdminUserDetail = () => {
                         )}
 
                         {platform.boards && (
-                          <Section title={`🏢 Boards checked — ${platform.boards.length} companies, ${platform.total_fetched} jobs`} collapsed>
+                          <Section title={`🏢 Sources checked — ${platform.boards.length} companies, ${platform.total_fetched} jobs`} collapsed>
                             <div className="flex flex-wrap gap-2">
-                              {platform.boards.map((b) => (
-                                <span key={b.board} className={`text-xs px-2.5 py-1 rounded-full font-medium ${b.error ? 'bg-red-500/10 text-red-400' : 'bg-white/5 text-slate-400'}`}>
-                                  {b.board} {!b.error && `(${b.count})`}
+                              {platform.boards.map((b, bi) => (
+                                <span key={b.board || b.company || bi} className={`text-xs px-2.5 py-1 rounded-full font-medium ${b.error ? 'bg-red-500/10 text-red-400' : 'bg-white/5 text-slate-400'}`}>
+                                  {b.board || b.company} {!b.error && `(${b.count})`}
                                 </span>
                               ))}
                             </div>

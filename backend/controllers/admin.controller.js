@@ -135,16 +135,19 @@ const buildLeverDescription = (j) => {
 const runLeverForUser = async (user) => {
   const allJobs = [];
   const companyResults = [];
+  const requests = [];
+  const rawResults = [];
   const active = LEVER_COMPANIES.filter((c) => c.enabled !== false);
 
   for (const { company, token, region } of active) {
     const base = region === 'eu' ? 'https://api.eu.lever.co' : 'https://api.lever.co';
+    const url = `${base}/v0/postings/${token}`;
+    requests.push({ label: `${company} (${region || 'global'})`, method: 'GET', url, params: { mode: 'json' } });
     try {
-      const res = await axios.get(`${base}/v0/postings/${token}`, {
-        params: { mode: 'json' }, timeout: 8000,
-      });
+      const res = await axios.get(url, { params: { mode: 'json' }, timeout: 8000 });
       const jobs = Array.isArray(res.data) ? res.data : [];
       companyResults.push({ company, count: jobs.length });
+      rawResults.push(...jobs);
 
       for (const j of jobs) {
         const jobObj = {
@@ -158,7 +161,7 @@ const runLeverForUser = async (user) => {
         };
         allJobs.push({ job: jobObj, score: scoreJob(user, jobObj) });
       }
-    } catch {
+    } catch (err) {
       companyResults.push({ company, count: 0, error: true });
     }
   }
@@ -167,7 +170,9 @@ const runLeverForUser = async (user) => {
 
   return {
     platform: 'Lever',
+    requests,
     boards: companyResults,
+    raw_results: rawResults,
     total_fetched: allJobs.length,
     matched: allJobs.filter((j) => j.score >= 40),
     filtered_out: allJobs.filter((j) => j.score < 40),

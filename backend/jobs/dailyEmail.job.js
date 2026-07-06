@@ -13,6 +13,12 @@ const getISTHour = () => {
   return Math.floor(istMinutes / 60) % 24;
 };
 
+// Grace window so a user emailed a few seconds/minutes into the previous cron run
+// still counts as "due" on the next hourly tick. Without this, `now - lastEmailedAt`
+// lands just under the interval (e.g. 59m55s < 1h) and the user silently drops to
+// half their configured frequency, drifting later with every send.
+const DUE_GRACE_MS = 5 * 60 * 1000; // 5 min (safely less than the 1h cron granularity)
+
 const isDue = (user) => {
   const now = Date.now();
   const intervalMs = user.emailIntervalHours * 60 * 60 * 1000;
@@ -21,7 +27,7 @@ const isDue = (user) => {
     if (getISTHour() !== user.emailSendHourIST) return false;
   }
 
-  return !user.lastEmailedAt || (now - new Date(user.lastEmailedAt).getTime()) >= intervalMs;
+  return !user.lastEmailedAt || (now - new Date(user.lastEmailedAt).getTime()) >= intervalMs - DUE_GRACE_MS;
 };
 
 // force=true (manual "Send emails now") bypasses each user's scheduled hour/interval

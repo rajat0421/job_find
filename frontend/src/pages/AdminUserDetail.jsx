@@ -329,7 +329,8 @@ const AdminUserDetail = () => {
                 </thead>
                 <tbody>
                   {jobs.map((uj, i) => {
-                    const isOpen = expandedJob === uj.jobId;
+                    const jobId = uj.job?._id;
+                    const isOpen = expandedJob === jobId;
                     return (
                       <>
                         <tr key={i} className={`border-t border-white/[0.06] transition-colors ${isOpen ? 'bg-white/[0.03]' : 'hover:bg-white/[0.02]'}`}>
@@ -353,14 +354,14 @@ const AdminUserDetail = () => {
                           <td className="px-4 py-3 text-slate-600 text-xs">{new Date(uj.createdAt).toLocaleDateString()}</td>
                           <td className="px-4 py-3">
                             <button
-                              onClick={() => setExpandedJob(isOpen ? null : uj.jobId)}
+                              onClick={() => setExpandedJob(isOpen ? null : jobId)}
                               className="text-xs text-violet-400 hover:text-violet-300 font-medium whitespace-nowrap"
                             >
                               {isOpen ? '▲ Hide' : '▼ Why?'}
                             </button>
                           </td>
                         </tr>
-                        {isOpen && <BreakdownRow userId={id} jobId={uj.jobId} />}
+                        {isOpen && <BreakdownRow userId={id} jobId={jobId} />}
                       </>
                     );
                   })}

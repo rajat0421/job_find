@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { isAdmin } = require('../middleware/admin.middleware');
-const { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, getConfig, updateConfig, fixGreenhouseDescriptions, rescoreAllUsers, getLogs, getEmailLogs, getJobBreakdown, sendDigestForUser, getUpcomingEmails } = require('../controllers/admin.controller');
+const { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, getConfig, updateConfig, fixGreenhouseDescriptions, rescoreAllUsers, backfillMatches, getLogs, getEmailLogs, getJobBreakdown, sendDigestForUser, getUpcomingEmails } = require('../controllers/admin.controller');
 const { adminGetFeedback, approveFeedback, declineFeedback, deleteFeedback } = require('../controllers/feedback.controller');
 
 router.use(isAdmin);
@@ -13,6 +13,7 @@ router.post('/users/:id/send-digest', sendDigestForUser);
 router.patch('/users/:id/email-schedule', updateEmailSchedule);
 router.post('/fix-greenhouse', fixGreenhouseDescriptions);
 router.post('/rescore-all', rescoreAllUsers);
+router.post('/backfill-matches', backfillMatches);
 router.get('/logs', getLogs);
 router.get('/email-logs', getEmailLogs);
 router.get('/email-schedule/stats', getEmailScheduleStats);

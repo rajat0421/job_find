@@ -86,6 +86,8 @@ const UsersList = () => {
   const [fixResult, setFixResult] = useState(null);
   const [rescoring, setRescoring] = useState(false);
   const [rescoreResult, setRescoreResult] = useState(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillResult, setBackfillResult] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -119,6 +121,17 @@ const UsersList = () => {
     } catch (e) {
       setRescoreResult({ error: e.response?.data?.message || e.message });
     } finally { setRescoring(false); }
+  };
+
+  const handleBackfill = async () => {
+    if (!window.confirm('Match all users against recent jobs and create any missing matches?')) return;
+    setBackfilling(true); setBackfillResult(null);
+    try {
+      const r = await adminApi.post('/admin/backfill-matches');
+      setBackfillResult(r.data);
+    } catch (e) {
+      setBackfillResult({ error: e.response?.data?.message || e.message });
+    } finally { setBackfilling(false); }
   };
 
   return (
@@ -157,6 +170,18 @@ const UsersList = () => {
           {rescoreResult && (
             <span className={`text-xs ${rescoreResult.error ? 'text-red-400' : 'text-green-400'}`}>
               {rescoreResult.error || `${rescoreResult.rescored} updated, ${rescoreResult.removed} removed`}
+            </span>
+          )}
+          <button
+            onClick={handleBackfill}
+            disabled={backfilling}
+            className="text-xs bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/20 px-3 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-60"
+          >
+            {backfilling ? 'Backfilling...' : 'Backfill Matches'}
+          </button>
+          {backfillResult && (
+            <span className={`text-xs ${backfillResult.error ? 'text-red-400' : 'text-green-400'}`}>
+              {backfillResult.error || backfillResult.message}
             </span>
           )}
           <button onClick={handleLogout} className="text-sm text-red-400 hover:text-red-300 font-medium">

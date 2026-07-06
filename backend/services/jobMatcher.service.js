@@ -186,13 +186,20 @@ const scoreJobDetailed = (user, job) => {
 // Thin wrapper — most callers just need the number
 const scoreJob = (user, job) => scoreJobDetailed(user, job).score;
 
+// How many of the most-recent jobs to score each user against per run.
+// _matchJobsForUser skips jobs a user already has a UserJob for, so this is a
+// backfill: it guarantees eventual coverage even if a cron run is missed (Render
+// spin-down) or a user onboarded after a job's original fetch window passed.
+const MATCH_WINDOW = 2000;
+
 const matchJobsForAllUsers = async () => {
   const users = await User.find({ isOnboarded: true, isEmailVerified: true });
-  const jobs = await Job.find({ createdAt: { $gte: new Date(Date.now() - 2 * 60 * 60 * 1000) } });
+  const jobs = await Job.find().sort({ createdAt: -1 }).limit(MATCH_WINDOW);
 
-  console.log(`[Matcher] ${jobs.length} jobs × ${users.length} users`);
-  for (const user of users) await _matchJobsForUser(user, jobs);
-  console.log('[Matcher] Done');
+  console.log(`[Matcher] ${jobs.length} recent jobs × ${users.length} users`);
+  let totalNew = 0;
+  for (const user of users) totalNew += await _matchJobsForUser(user, jobs);
+  console.log(`[Matcher] Done — ${totalNew} new match(es) created`);
 };
 
 const matchJobsForUser = async (userId) => {

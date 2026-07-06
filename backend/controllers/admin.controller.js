@@ -6,7 +6,7 @@ const UserJob = require('../models/UserJob');
 const RequestLog = require('../models/RequestLog');
 const EmailLog = require('../models/EmailLog');
 const Config = require('../models/Config');
-const { scoreJob, scoreJobWithBreakdown } = require('../services/jobMatcher.service');
+const { scoreJob, scoreJobWithBreakdown, matchJobsForAllUsers } = require('../services/jobMatcher.service');
 
 const generateJobHash = (title, company, location) =>
   crypto.createHash('md5').update(`${title}-${company}-${location}`).digest('hex');
@@ -322,6 +322,18 @@ const rescoreAllUsers = async (_req, res) => {
   }
 };
 
+// POST /api/admin/backfill-matches
+// Scores every active user against recent jobs, creating any MISSING UserJob records.
+// Fixes users who never got matched to jobs due to the fetch/match timing window.
+const backfillMatches = async (_req, res) => {
+  try {
+    await matchJobsForAllUsers();
+    res.json({ message: 'Backfill complete — check server logs for new match count' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 const getLogs = async (req, res) => {
   try {
     const { page = 1, limit = 50, action, status, email } = req.query;
@@ -524,4 +536,4 @@ const sendDigestForUser = async (req, res) => {
   }
 };
 
-module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, getConfig, updateConfig, fixGreenhouseDescriptions, rescoreAllUsers, getLogs, getEmailLogs, getJobBreakdown, sendDigestForUser, getUpcomingEmails };
+module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, getConfig, updateConfig, fixGreenhouseDescriptions, rescoreAllUsers, backfillMatches, getLogs, getEmailLogs, getJobBreakdown, sendDigestForUser, getUpcomingEmails };

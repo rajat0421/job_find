@@ -1,0 +1,6 @@
+[
+  { "company": "Meesho", "token": "meesho", "region": "global", "enabled": true },
+  { "company": "CRED", "token": "cred", "region": "global", "enabled": true },
+  { "company": "Zeta", "token": "zeta", "region": "global", "enabled": true },
+  { "company": "Spotify", "token": "spotify", "region": "global", "enabled": true }
+]

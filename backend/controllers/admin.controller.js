@@ -118,6 +118,62 @@ const runGreenhouseForUser = async (user) => {
   };
 };
 
+// Fetch + score Lever jobs live for a specific user (no DB save)
+const { COMPANIES: LEVER_COMPANIES, stripHtml: leverStripHtml } = require('../platforms/lever');
+
+const buildLeverDescription = (j) => {
+  const parts = [];
+  if (j.descriptionPlain) parts.push(j.descriptionPlain);
+  else if (j.description) parts.push(leverStripHtml(j.description));
+  for (const section of j.lists || []) {
+    if (section.text) parts.push(section.text);
+    if (section.content) parts.push(leverStripHtml(section.content));
+  }
+  return parts.join(' ').replace(/\s+/g, ' ').trim();
+};
+
+const runLeverForUser = async (user) => {
+  const allJobs = [];
+  const companyResults = [];
+  const active = LEVER_COMPANIES.filter((c) => c.enabled !== false);
+
+  for (const { company, token, region } of active) {
+    const base = region === 'eu' ? 'https://api.eu.lever.co' : 'https://api.lever.co';
+    try {
+      const res = await axios.get(`${base}/v0/postings/${token}`, {
+        params: { mode: 'json' }, timeout: 8000,
+      });
+      const jobs = Array.isArray(res.data) ? res.data : [];
+      companyResults.push({ company, count: jobs.length });
+
+      for (const j of jobs) {
+        const jobObj = {
+          title: j.text || '',
+          company,
+          location: j.categories?.location || (j.categories?.allLocations || []).join(', ') || '',
+          salaryMin: null,
+          salaryMax: null,
+          description: buildLeverDescription(j),
+          applyLink: j.applyUrl || j.hostedUrl || '',
+        };
+        allJobs.push({ job: jobObj, score: scoreJob(user, jobObj) });
+      }
+    } catch {
+      companyResults.push({ company, count: 0, error: true });
+    }
+  }
+
+  allJobs.sort((a, b) => b.score - a.score);
+
+  return {
+    platform: 'Lever',
+    boards: companyResults,
+    total_fetched: allJobs.length,
+    matched: allJobs.filter((j) => j.score >= 40),
+    filtered_out: allJobs.filter((j) => j.score < 40),
+  };
+};
+
 // GET /api/admin/users
 const listUsers = async (_req, res) => {
   try {
@@ -186,14 +242,16 @@ const runApiForUser = async (req, res) => {
     const user = await User.findById(req.params.id).select('-password');
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const [adzuna, greenhouse] = await Promise.allSettled([
+    const [adzuna, greenhouse, lever] = await Promise.allSettled([
       runAdzunaForUser(user),
       runGreenhouseForUser(user),
+      runLeverForUser(user),
     ]);
 
     const platforms = [
       adzuna.status === 'fulfilled' ? adzuna.value : { platform: 'Adzuna', error: adzuna.reason?.message },
       greenhouse.status === 'fulfilled' ? greenhouse.value : { platform: 'Greenhouse', error: greenhouse.reason?.message },
+      lever.status === 'fulfilled' ? lever.value : { platform: 'Lever', error: lever.reason?.message },
     ];
 
     const totalFetched = platforms.reduce((s, p) => s + (p.total_fetched || 0), 0);

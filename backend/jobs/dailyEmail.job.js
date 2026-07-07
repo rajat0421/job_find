@@ -13,6 +13,9 @@ const getISTHour = () => {
   return Math.floor(istMinutes / 60) % 24;
 };
 
+// IST calendar day (YYYY-MM-DD) for a given Date — used to send daily users once per day
+const istDayStr = (d) => new Date(d.getTime() + (5 * 60 + 30) * 60 * 1000).toISOString().slice(0, 10);
+
 // Grace window so a user emailed a few seconds/minutes into the previous cron run
 // still counts as "due" on the next hourly tick. Without this, `now - lastEmailedAt`
 // lands just under the interval (e.g. 59m55s < 1h) and the user silently drops to
@@ -21,12 +24,18 @@ const DUE_GRACE_MS = 5 * 60 * 1000; // 5 min (safely less than the 1h cron granu
 
 const isDue = (user) => {
   const now = Date.now();
-  const intervalMs = user.emailIntervalHours * 60 * 60 * 1000;
 
+  // Daily users: send once per IST calendar day at their chosen hour. Gating on the
+  // calendar day (not a strict 24h-elapsed check) means an off-hour manual send
+  // doesn't push the next day's scheduled email out by a full extra day.
   if (user.emailIntervalHours === 24) {
     if (getISTHour() !== user.emailSendHourIST) return false;
+    if (!user.lastEmailedAt) return true;
+    return istDayStr(new Date()) !== istDayStr(new Date(user.lastEmailedAt));
   }
 
+  // Hourly / 5-hourly users: interval elapsed (with grace for cron-tick drift)
+  const intervalMs = user.emailIntervalHours * 60 * 60 * 1000;
   return !user.lastEmailedAt || (now - new Date(user.lastEmailedAt).getTime()) >= intervalMs - DUE_GRACE_MS;
 };
 

@@ -2,5 +2,14 @@
   { "company": "Meesho", "token": "meesho", "region": "global", "enabled": true },
   { "company": "CRED", "token": "cred", "region": "global", "enabled": true },
   { "company": "Zeta", "token": "zeta", "region": "global", "enabled": true },
-  { "company": "Spotify", "token": "spotify", "region": "global", "enabled": true }
+  { "company": "Spotify", "token": "spotify", "region": "global", "enabled": true },
+  { "company": "Palantir", "token": "palantir", "region": "global", "enabled": true },
+  { "company": "Mindtickle", "token": "mindtickle", "region": "global", "enabled": true },
+  { "company": "Fi", "token": "fi", "region": "global", "enabled": true },
+  { "company": "Newton School", "token": "newton", "region": "global", "enabled": true },
+  { "company": "Highspot", "token": "highspot", "region": "global", "enabled": true },
+  { "company": "Gopuff", "token": "gopuff", "region": "global", "enabled": true },
+  { "company": "Getty Images", "token": "gettyimages", "region": "global", "enabled": true },
+  { "company": "Nium", "token": "nium", "region": "global", "enabled": true },
+  { "company": "Zoox", "token": "zoox", "region": "global", "enabled": true }
 ]

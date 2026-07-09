@@ -181,6 +181,64 @@ const runLeverForUser = async (user) => {
   };
 };
 
+// Fetch + score Ashby jobs live for a specific user (no DB save)
+const { BOARDS: ASHBY_BOARDS } = require('../platforms/ashby');
+
+const normalizeAshbyWorkplace = (wt) => {
+  if (!wt) return null;
+  const w = wt.toLowerCase();
+  if (w.includes('remote')) return 'remote';
+  if (w.includes('hybrid')) return 'hybrid';
+  return 'onsite';
+};
+
+const runAshbyForUser = async (user) => {
+  const allJobs = [];
+  const companyResults = [];
+  const requests = [];
+  const rawResults = [];
+  const active = ASHBY_BOARDS.filter((b) => b.enabled !== false);
+
+  for (const { company, board } of active) {
+    const url = `https://api.ashbyhq.com/posting-api/job-board/${board}`;
+    requests.push({ label: company, method: 'GET', url });
+    try {
+      const res = await axios.get(url, { timeout: 8000 });
+      const jobs = res.data?.jobs || [];
+      companyResults.push({ company, count: jobs.length });
+      rawResults.push(...jobs);
+
+      for (const j of jobs) {
+        const jobObj = {
+          title: j.title || '',
+          company,
+          location: j.location || '',
+          salaryMin: null,
+          salaryMax: null,
+          description: j.descriptionPlain || '',
+          applyLink: j.applyUrl || j.jobUrl || '',
+          workplaceType: normalizeAshbyWorkplace(j.workplaceType) || (j.isRemote ? 'remote' : null),
+        };
+        allJobs.push({ job: jobObj, score: scoreJob(user, jobObj) });
+      }
+    } catch {
+      companyResults.push({ company, count: 0, error: true });
+    }
+  }
+
+  allJobs.sort((a, b) => b.score - a.score);
+
+  return {
+    platform: 'Ashby',
+    requests,
+    boards: companyResults,
+    raw_results: rawResults,
+    total_fetched: allJobs.length,
+    matched: allJobs.filter((j) => j.score >= 40),
+    filtered_out: allJobs.filter((j) => j.score < 40),
+  };
+};
+
 // GET /api/admin/users
 const listUsers = async (_req, res) => {
   try {
@@ -249,16 +307,18 @@ const runApiForUser = async (req, res) => {
     const user = await User.findById(req.params.id).select('-password');
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const [adzuna, greenhouse, lever] = await Promise.allSettled([
+    const [adzuna, greenhouse, lever, ashby] = await Promise.allSettled([
       runAdzunaForUser(user),
       runGreenhouseForUser(user),
       runLeverForUser(user),
+      runAshbyForUser(user),
     ]);
 
     const platforms = [
       adzuna.status === 'fulfilled' ? adzuna.value : { platform: 'Adzuna', error: adzuna.reason?.message },
       greenhouse.status === 'fulfilled' ? greenhouse.value : { platform: 'Greenhouse', error: greenhouse.reason?.message },
       lever.status === 'fulfilled' ? lever.value : { platform: 'Lever', error: lever.reason?.message },
+      ashby.status === 'fulfilled' ? ashby.value : { platform: 'Ashby', error: ashby.reason?.message },
     ];
 
     const totalFetched = platforms.reduce((s, p) => s + (p.total_fetched || 0), 0);

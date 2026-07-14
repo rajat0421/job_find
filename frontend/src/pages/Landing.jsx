@@ -25,24 +25,30 @@ const STEPS = [
   },
 ];
 
+const iconSvg = (paths) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+    {paths}
+  </svg>
+);
+
 const FEATURES = [
   {
-    icon: '🎯',
+    icon: iconSvg(<><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /></>),
     title: 'Role-first, not keyword soup',
     desc: 'We filter by your exact target title before anything else. "Technical Success Manager" never reaches a backend developer.',
   },
   {
-    icon: '🏢',
+    icon: iconSvg(<><rect x="4" y="3" width="16" height="18" rx="1" /><path d="M9 21v-4h6v4M8 7h.01M12 7h.01M16 7h.01M8 11h.01M12 11h.01M16 11h.01" /></>),
     title: '90+ company job boards',
     desc: 'We scan Adzuna + Greenhouse-powered boards at Airbnb, Notion, Figma, Stripe, Coinbase and dozens more — all in one digest.',
   },
   {
-    icon: '📬',
+    icon: iconSvg(<><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></>),
     title: 'Inbox, not a feed',
     desc: 'No app to check. No notifications to ignore. Curated matches arrive in your email exactly when you want them.',
   },
   {
-    icon: '🧠',
+    icon: iconSvg(<path d="M12 3l1.6 5L18.5 9.6 13.6 12 12 17l-1.6-5L5.5 9.6 10.4 8z" />),
     title: 'Smart score, not random results',
     desc: 'Every job gets a score based on role match, skill overlap, experience level, location and salary. Low scores never reach you.',
   },
@@ -212,7 +218,7 @@ const Landing = () => {
         <div className="grid sm:grid-cols-2 gap-4">
           {FEATURES.map((f) => (
             <div key={f.title} className="bg-[#12121c] border border-white/[0.07] rounded-2xl p-6 flex gap-4">
-              <span className="text-2xl shrink-0 mt-0.5">{f.icon}</span>
+              <span className="shrink-0 mt-0.5 w-10 h-10 rounded-xl bg-violet-500/10 text-violet-400 flex items-center justify-center">{f.icon}</span>
               <div>
                 <h3 className="text-base font-semibold text-white mb-1.5">{f.title}</h3>
                 <p className="text-sm text-slate-500 leading-relaxed">{f.desc}</p>
@@ -276,10 +282,10 @@ const Landing = () => {
         {/* Rajat's note */}
         <div className="mt-10 max-w-xl mx-auto text-center">
           <p className="text-slate-500 text-sm leading-relaxed">
-            🤫 <span className="text-slate-400 font-medium">Psst</span> - between us, if you want all the premium stuff for free,
+            <span className="text-slate-400 font-medium">Psst</span> - between us, if you want all the premium stuff for free,
             just slide into{' '}
             <a
-              href="mailto:rajattalekar5143@gmail.com?subject=Free Premium Please 🙏"
+              href="mailto:rajattalekar5143@gmail.com?subject=Free Premium Please"
               className="text-violet-400 hover:text-violet-300 underline underline-offset-2 transition-colors"
             >
               Rajat's inbox

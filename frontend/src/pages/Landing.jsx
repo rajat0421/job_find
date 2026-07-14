@@ -2,26 +2,26 @@ import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 const COMPANIES = [
-  'Airbnb', 'Notion', 'Figma', 'Stripe', 'Coinbase', 'DoorDash',
-  'Robinhood', 'Canva', 'Brex', 'Plaid', 'Airtable', 'Vercel',
-  'Linear', 'Retool', 'Loom', 'Miro', 'Zapier', 'Webflow', 'Rippling', 'Deel',
+  'OpenAI', 'Notion', 'Figma', 'Stripe', 'Snowflake', 'Meesho',
+  'CRED', 'Ramp', 'Coinbase', 'Airbnb', 'Databricks', 'Palantir',
+  'Perplexity', 'Cursor', 'Vercel', 'Linear', 'Spotify', 'Pinterest', 'Robinhood', 'Airtable',
 ];
 
 const STEPS = [
   {
     n: '1',
-    title: 'Tell us what you want',
-    desc: 'Select your target role — Backend Dev, Data Engineer, DevOps — add your skills, experience and location. Two minutes, done.',
+    title: 'Build your profile in minutes',
+    desc: 'Upload your resume and AI fills in your skills, roles and experience — or set them yourself. Add your target roles and locations.',
   },
   {
     n: '2',
     title: 'We scan every hour',
-    desc: 'Our system checks 90+ job boards continuously. Every job is scored against your profile using a role-first matching algorithm.',
+    desc: 'We pull live postings from 130+ companies across Adzuna, Greenhouse, Lever and Ashby. Every job is scored against your profile.',
   },
   {
     n: '3',
     title: 'Matches hit your inbox',
-    desc: 'Top jobs land in your email on your schedule — daily by default. No app to open, no feed to scroll.',
+    desc: 'Top matches land in your email on your schedule — daily, every 5 hours, or hourly. Each one shows why it matched. No feed to scroll.',
   },
 ];
 
@@ -33,24 +33,34 @@ const iconSvg = (paths) => (
 
 const FEATURES = [
   {
+    icon: iconSvg(<><path d="M8 3h6l4 4v12a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" /><path d="M14 3v4h4M9.5 12.5h5M9.5 16h5" /></>),
+    title: 'AI resume autofill',
+    desc: 'Upload your resume (PDF or DOCX) and AI extracts your skills, roles and experience in seconds. You review and edit everything before it saves.',
+  },
+  {
     icon: iconSvg(<><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /></>),
     title: 'Role-first, not keyword soup',
-    desc: 'We filter by your exact target title before anything else. "Technical Success Manager" never reaches a backend developer.',
+    desc: 'We filter by your exact target roles before anything else, then score skills, experience, location and salary. "Success Manager" never reaches a backend dev.',
   },
   {
     icon: iconSvg(<><rect x="4" y="3" width="16" height="18" rx="1" /><path d="M9 21v-4h6v4M8 7h.01M12 7h.01M16 7h.01M8 11h.01M12 11h.01M16 11h.01" /></>),
-    title: '90+ company job boards',
-    desc: 'We scan Adzuna + Greenhouse-powered boards at Airbnb, Notion, Figma, Stripe, Coinbase and dozens more — all in one digest.',
+    title: '130+ companies, 4 sources',
+    desc: 'Live postings from Adzuna plus Greenhouse, Lever and Ashby boards — OpenAI, Stripe, Meesho, Notion, Snowflake and 130+ more, all in one digest.',
+  },
+  {
+    icon: iconSvg(<path d="M12 3l1.6 5L18.5 9.6 13.6 12 12 17l-1.6-5L5.5 9.6 10.4 8z" />),
+    title: 'Scores that explain themselves',
+    desc: 'Every match shows a score and why it matched — the skills, role and location that lined up. No black-box results, and low scores never reach you.',
+  },
+  {
+    icon: iconSvg(<><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></>),
+    title: 'Delivery on your schedule',
+    desc: 'Daily, every 5 hours, or hourly — you choose. Remote and hybrid roles are detected and included based on your preference.',
   },
   {
     icon: iconSvg(<><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></>),
     title: 'Inbox, not a feed',
-    desc: 'No app to check. No notifications to ignore. Curated matches arrive in your email exactly when you want them.',
-  },
-  {
-    icon: iconSvg(<path d="M12 3l1.6 5L18.5 9.6 13.6 12 12 17l-1.6-5L5.5 9.6 10.4 8z" />),
-    title: 'Smart score, not random results',
-    desc: 'Every job gets a score based on role match, skill overlap, experience level, location and salary. Low scores never reach you.',
+    desc: 'No app to check, no notifications to ignore. Curated matches arrive in your email exactly when you want them.',
   },
 ];
 
@@ -59,7 +69,7 @@ const PLANS = [
     name: 'Free',
     price: '₹0',
     sub: 'Daily digest',
-    features: ['Role + skill matching', '90+ company sources', 'Daily email digest', 'Profile & preferences'],
+    features: ['AI resume autofill', 'Role + skill matching', '130+ companies · 4 sources', 'Daily email digest'],
     cta: 'Get started free',
     to: '/register',
     highlight: false,
@@ -85,9 +95,9 @@ const PLANS = [
 ];
 
 const STATS = [
-  { value: '90+', label: 'company boards' },
-  { value: 'Hourly', label: 'job scans' },
-  { value: '100%', label: 'free to start' },
+  { value: '130+', label: 'companies' },
+  { value: '4', label: 'job sources' },
+  { value: 'Hourly', label: 'fresh scans' },
 ];
 
 const Landing = () => {
@@ -130,7 +140,7 @@ const Landing = () => {
         <div className="relative">
           <div className="inline-flex items-center gap-2 bg-violet-600/10 border border-violet-500/20 rounded-full px-4 py-1.5 text-xs text-violet-400 font-medium mb-8">
             <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
-            Scanning 90+ job boards · Updated every hour
+            130+ companies · 4 job sources · Updated every hour
           </div>
 
           <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold leading-[1.08] tracking-tight mb-6">
@@ -139,7 +149,7 @@ const Landing = () => {
           </h1>
 
           <p className="text-lg text-slate-400 max-w-lg mx-auto mb-10 leading-relaxed">
-            JobFind matches jobs to your exact role and skills, then delivers a curated digest to your inbox. No scrolling required.
+            Upload your resume, and JobFind matches roles to your exact skills across 130+ companies — then delivers a curated digest to your inbox. No scrolling required.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-5">
@@ -175,7 +185,7 @@ const Landing = () => {
       {/* ── Companies ────────────────────────────────────────────────────────── */}
       <section className="py-14 border-b border-white/[0.06]">
         <p className="text-center text-[10px] text-slate-600 uppercase tracking-widest mb-6">
-          Sourcing from companies including
+          Sourcing live roles from companies including
         </p>
         <div className="flex flex-wrap justify-center gap-2.5 max-w-3xl mx-auto px-4">
           {COMPANIES.map((c) => (
@@ -187,7 +197,7 @@ const Landing = () => {
             </span>
           ))}
           <span className="text-xs text-slate-600 bg-white/[0.02] border border-white/[0.04] px-3 py-1.5 rounded-full">
-            + 70 more
+            + 110 more
           </span>
         </div>
       </section>
@@ -304,7 +314,7 @@ const Landing = () => {
           <div className="relative">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">Ready to get matched?</h2>
             <p className="text-slate-400 text-sm max-w-md mx-auto mb-8 leading-relaxed">
-              Set up your profile in 2 minutes. We'll start scanning 90+ job boards and send you the best matches.
+              Upload your resume or set up your profile in 2 minutes. We'll scan 130+ companies and send you the best matches with reasons.
             </p>
             <Link
               to="/register"

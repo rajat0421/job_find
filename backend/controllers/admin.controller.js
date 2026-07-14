@@ -6,7 +6,9 @@ const UserJob = require('../models/UserJob');
 const RequestLog = require('../models/RequestLog');
 const EmailLog = require('../models/EmailLog');
 const Config = require('../models/Config');
+const Company = require('../models/Company');
 const { scoreJob, scoreJobWithBreakdown, matchJobsForAllUsers } = require('../services/jobMatcher.service');
+const { getCompanies } = require('../services/companies.service');
 
 const generateJobHash = (title, company, location) =>
   crypto.createHash('md5').update(`${title}-${company}-${location}`).digest('hex');
@@ -75,25 +77,26 @@ const runAdzunaForUser = async (user) => {
 };
 
 // Fetch + score Greenhouse jobs live for a specific user (no DB save)
-const { BOARDS: GREENHOUSE_BOARDS, stripHtml } = require('../platforms/greenhouse');
+const { stripHtml } = require('../platforms/greenhouse');
 
 const runGreenhouseForUser = async (user) => {
   const allJobs = [];
   const boardResults = [];
+  const companies = await getCompanies('greenhouse');
 
-  for (const board of GREENHOUSE_BOARDS) {
+  for (const { name, token: board } of companies) {
     try {
       const res = await axios.get(
         `https://boards-api.greenhouse.io/v1/boards/${board}/jobs?content=true`,
         { timeout: 8000 }
       );
       const jobs = res.data?.jobs || [];
-      boardResults.push({ board, count: jobs.length });
+      boardResults.push({ company: name, count: jobs.length });
 
       for (const j of jobs) {
         const jobObj = {
           title: j.title || '',
-          company: board.charAt(0).toUpperCase() + board.slice(1),
+          company: name,
           location: j.location?.name || '',
           salaryMin: null,
           salaryMax: null,
@@ -103,7 +106,7 @@ const runGreenhouseForUser = async (user) => {
         allJobs.push({ job: jobObj, score: scoreJob(user, jobObj) });
       }
     } catch {
-      boardResults.push({ board, count: 0, error: true });
+      boardResults.push({ company: name, count: 0, error: true });
     }
   }
 
@@ -137,9 +140,9 @@ const runLeverForUser = async (user) => {
   const companyResults = [];
   const requests = [];
   const rawResults = [];
-  const active = LEVER_COMPANIES.filter((c) => c.enabled !== false);
+  const active = await getCompanies('lever');
 
-  for (const { company, token, region } of active) {
+  for (const { name: company, token, region } of active) {
     const base = region === 'eu' ? 'https://api.eu.lever.co' : 'https://api.lever.co';
     const url = `${base}/v0/postings/${token}`;
     requests.push({ label: `${company} (${region || 'global'})`, method: 'GET', url, params: { mode: 'json' } });
@@ -182,8 +185,6 @@ const runLeverForUser = async (user) => {
 };
 
 // Fetch + score Ashby jobs live for a specific user (no DB save)
-const { BOARDS: ASHBY_BOARDS } = require('../platforms/ashby');
-
 const normalizeAshbyWorkplace = (wt) => {
   if (!wt) return null;
   const w = wt.toLowerCase();
@@ -197,9 +198,9 @@ const runAshbyForUser = async (user) => {
   const companyResults = [];
   const requests = [];
   const rawResults = [];
-  const active = ASHBY_BOARDS.filter((b) => b.enabled !== false);
+  const active = await getCompanies('ashby');
 
-  for (const { company, board } of active) {
+  for (const { name: company, token: board } of active) {
     const url = `https://api.ashbyhq.com/posting-api/job-board/${board}`;
     requests.push({ label: company, method: 'GET', url });
     try {
@@ -585,6 +586,85 @@ const getJobBreakdown = async (req, res) => {
   }
 };
 
+// ── Company (ATS source) management ──────────────────────────────────────────
+// Live-probe a provider token; returns the job count so admin can verify before saving
+const probeCompany = async (provider, token, region = 'global') => {
+  if (provider === 'greenhouse') {
+    const r = await axios.get(`https://boards-api.greenhouse.io/v1/boards/${token}/jobs`, { timeout: 8000 });
+    return Array.isArray(r.data?.jobs) ? r.data.jobs.length : 0;
+  }
+  if (provider === 'lever') {
+    const base = region === 'eu' ? 'https://api.eu.lever.co' : 'https://api.lever.co';
+    const r = await axios.get(`${base}/v0/postings/${token}`, { params: { mode: 'json' }, timeout: 8000 });
+    return Array.isArray(r.data) ? r.data.length : 0;
+  }
+  if (provider === 'ashby') {
+    const r = await axios.get(`https://api.ashbyhq.com/posting-api/job-board/${token}`, { timeout: 8000 });
+    return Array.isArray(r.data?.jobs) ? r.data.jobs.length : 0;
+  }
+  throw new Error('Unknown provider');
+};
+
+const listCompanies = async (_req, res) => {
+  try {
+    const companies = await Company.find().sort({ provider: 1, name: 1 }).lean();
+    res.json(companies);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const createCompany = async (req, res) => {
+  try {
+    const { name, provider, token, region = 'global', enabled = true } = req.body;
+    if (!name || !provider || !token) return res.status(400).json({ message: 'name, provider and token are required' });
+    if (!['greenhouse', 'lever', 'ashby'].includes(provider)) return res.status(400).json({ message: 'Invalid provider' });
+
+    // Verify the token actually returns jobs before saving
+    let jobCount;
+    try {
+      jobCount = await probeCompany(provider, token.trim(), region);
+    } catch {
+      return res.status(400).json({ message: `Could not reach ${provider} for token "${token}" — check the token` });
+    }
+    if (jobCount === 0) return res.status(400).json({ message: `Token "${token}" returned 0 jobs — likely wrong or inactive` });
+
+    const company = await Company.create({
+      name: name.trim(), provider, token: token.trim(), region, enabled,
+      lastJobCount: jobCount, lastFetchedAt: new Date(),
+    });
+    res.status(201).json({ company, message: `Added ${name} — ${jobCount} jobs found` });
+  } catch (err) {
+    if (err.code === 11000) return res.status(409).json({ message: 'That provider + token already exists' });
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const updateCompany = async (req, res) => {
+  try {
+    const { name, enabled, region } = req.body;
+    const update = {};
+    if (name !== undefined) update.name = name.trim();
+    if (enabled !== undefined) update.enabled = enabled;
+    if (region !== undefined) update.region = region;
+    const company = await Company.findByIdAndUpdate(req.params.id, update, { new: true });
+    if (!company) return res.status(404).json({ message: 'Company not found' });
+    res.json({ company });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+const deleteCompany = async (req, res) => {
+  try {
+    const r = await Company.findByIdAndDelete(req.params.id);
+    if (!r) return res.status(404).json({ message: 'Company not found' });
+    res.json({ message: 'Deleted' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 const getUpcomingEmails = async (_req, res) => {
   try {
     const users = await User.find({ isOnboarded: true, isEmailVerified: true, emailPaused: { $ne: true } })
@@ -661,4 +741,4 @@ const sendDigestForUser = async (req, res) => {
   }
 };
 
-module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, getConfig, updateConfig, fixGreenhouseDescriptions, rescoreAllUsers, backfillMatches, getLogs, getEmailLogs, getJobBreakdown, sendDigestForUser, getUpcomingEmails };
+module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, getConfig, updateConfig, fixGreenhouseDescriptions, rescoreAllUsers, backfillMatches, getLogs, getEmailLogs, getJobBreakdown, sendDigestForUser, getUpcomingEmails, listCompanies, createCompany, updateCompany, deleteCompany };

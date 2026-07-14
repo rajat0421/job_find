@@ -118,6 +118,7 @@ const AdminLogs = () => {
             <NavBtn active>API Logs</NavBtn>
             <NavBtn onClick={() => navigate('/admin/email-logs')}>Email Logs</NavBtn>
             <NavBtn onClick={() => navigate('/admin/feedback')}>Feedback</NavBtn>
+            <NavBtn onClick={() => navigate('/admin/companies')}>Companies</NavBtn>
           </nav>
         </div>
         <button

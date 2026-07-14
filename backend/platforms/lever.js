@@ -2,9 +2,12 @@ const axios = require('axios');
 const crypto = require('crypto');
 const Job = require('../models/Job');
 
-// Public Lever Postings API — no auth needed. Add companies in data/leverCompanies.json.
+// Public Lever Postings API — no auth needed. Companies are managed in the Company
+// collection (admin portal), with leverCompanies.json as a seed/fallback.
 // Find a token from its careers page: https://jobs.lever.co/<token>
-const COMPANIES = require('../data/leverCompanies.json');
+const { getCompanies } = require('../services/companies.service');
+const Company = require('../models/Company');
+const COMPANIES = require('../data/leverCompanies.json'); // legacy export for admin live-test compatibility
 
 const generateJobHash = (title, company, location) =>
   crypto.createHash('md5').update(`${title}-${company}-${location}`).digest('hex');
@@ -41,9 +44,10 @@ const baseUrl = (region) => (region === 'eu' ? 'https://api.eu.lever.co' : 'http
 
 const fetchJobs = async () => {
   let newCount = 0;
-  const active = COMPANIES.filter((c) => c.enabled !== false);
+  const companies = await getCompanies('lever');
 
-  for (const { company, token, region } of active) {
+  for (const { _id, name: company, token, region } of companies) {
+    let fetched = 0;
     try {
       const res = await axios.get(`${baseUrl(region)}/v0/postings/${token}`, {
         params: { mode: 'json' },
@@ -51,6 +55,7 @@ const fetchJobs = async () => {
       });
 
       const jobs = Array.isArray(res.data) ? res.data : [];
+      fetched = jobs.length;
 
       for (const j of jobs) {
         const title = j.text || '';
@@ -78,9 +83,11 @@ const fetchJobs = async () => {
         });
         newCount++;
       }
+      if (_id) await Company.updateOne({ _id }, { lastFetchedAt: new Date(), lastJobCount: fetched });
     } catch (err) {
       // Token may be wrong, company left Lever, or on the EU instance — skip and continue
       console.warn(`[Lever] Skipped ${company} (${token}): ${err.response?.status || err.message}`);
+      if (_id) await Company.updateOne({ _id }, { lastFetchedAt: new Date(), lastJobCount: 0 });
     }
   }
 

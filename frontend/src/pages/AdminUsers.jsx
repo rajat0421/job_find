@@ -145,6 +145,7 @@ const UsersList = () => {
             <NavBtn onClick={() => navigate('/admin/logs')}>API Logs</NavBtn>
             <NavBtn onClick={() => navigate('/admin/email-logs')}>Email Logs</NavBtn>
             <NavBtn onClick={() => navigate('/admin/feedback')}>Feedback</NavBtn>
+            <NavBtn onClick={() => navigate('/admin/companies')}>Companies</NavBtn>
           </nav>
         </div>
         <div className="flex items-center gap-3 flex-wrap">

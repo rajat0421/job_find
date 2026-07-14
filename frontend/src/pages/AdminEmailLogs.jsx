@@ -175,6 +175,7 @@ export default function AdminEmailLogs() {
             {navBtn('API Logs', false, () => navigate('/admin/logs'))}
             {navBtn('Email Logs', true, null)}
             {navBtn('Feedback', false, () => navigate('/admin/feedback'))}
+            {navBtn('Companies', false, () => navigate('/admin/companies'))}
           </nav>
         </div>
         <button onClick={() => { localStorage.removeItem('adminToken'); navigate('/admin'); }} className="text-sm text-red-400 hover:text-red-300 font-medium">

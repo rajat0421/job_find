@@ -16,6 +16,7 @@ import AdminUserDetail from './pages/AdminUserDetail';
 import AdminLogs from './pages/AdminLogs';
 import AdminEmailLogs from './pages/AdminEmailLogs';
 import AdminFeedback from './pages/AdminFeedback';
+import AdminCompanies from './pages/AdminCompanies';
 import Landing from './pages/Landing';
 
 const App = () => (
@@ -36,6 +37,7 @@ const App = () => (
         <Route path="/admin/logs" element={<AdminRoute><AdminLogs /></AdminRoute>} />
         <Route path="/admin/email-logs" element={<AdminRoute><AdminEmailLogs /></AdminRoute>} />
         <Route path="/admin/feedback" element={<AdminRoute><AdminFeedback /></AdminRoute>} />
+        <Route path="/admin/companies" element={<AdminRoute><AdminCompanies /></AdminRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

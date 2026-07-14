@@ -11,5 +11,6 @@
   { "company": "Gopuff", "token": "gopuff", "region": "global", "enabled": true },
   { "company": "Getty Images", "token": "gettyimages", "region": "global", "enabled": true },
   { "company": "Nium", "token": "nium", "region": "global", "enabled": true },
-  { "company": "Zoox", "token": "zoox", "region": "global", "enabled": true }
+  { "company": "Zoox", "token": "zoox", "region": "global", "enabled": true },
+  { "company": "Neon", "token": "neon", "region": "global", "enabled": true }
 ]

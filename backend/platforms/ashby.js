@@ -2,9 +2,12 @@ const axios = require('axios');
 const crypto = require('crypto');
 const Job = require('../models/Job');
 
-// Public Ashby Job Posting API — no auth. Add companies in data/ashbyBoards.json.
+// Public Ashby Job Posting API — no auth. Companies are managed in the Company
+// collection (admin portal), with ashbyBoards.json as a seed/fallback.
 // Find a board name from its careers page: https://jobs.ashbyhq.com/<board>
-const BOARDS = require('../data/ashbyBoards.json');
+const { getCompanies } = require('../services/companies.service');
+const Company = require('../models/Company');
+const BOARDS = require('../data/ashbyBoards.json'); // legacy export for admin live-test compatibility
 
 const generateJobHash = (title, company, location) =>
   crypto.createHash('md5').update(`${title}-${company}-${location}`).digest('hex');
@@ -20,15 +23,17 @@ const normalizeWorkplace = (wt) => {
 
 const fetchJobs = async () => {
   let newCount = 0;
-  const active = BOARDS.filter((b) => b.enabled !== false);
+  const companies = await getCompanies('ashby');
 
-  for (const { company, board } of active) {
+  for (const { _id, name: company, token: board } of companies) {
+    let fetched = 0;
     try {
       const res = await axios.get(`https://api.ashbyhq.com/posting-api/job-board/${board}`, {
         timeout: 10000,
       });
 
       const jobs = res.data?.jobs || [];
+      fetched = jobs.length;
 
       for (const j of jobs) {
         const title = j.title || '';
@@ -56,8 +61,10 @@ const fetchJobs = async () => {
         });
         newCount++;
       }
+      if (_id) await Company.updateOne({ _id }, { lastFetchedAt: new Date(), lastJobCount: fetched });
     } catch (err) {
       console.warn(`[Ashby] Skipped ${company} (${board}): ${err.response?.status || err.message}`);
+      if (_id) await Company.updateOne({ _id }, { lastFetchedAt: new Date(), lastJobCount: 0 });
     }
   }
 

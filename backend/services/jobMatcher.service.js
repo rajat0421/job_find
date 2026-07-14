@@ -2,27 +2,86 @@ const User = require('../models/User');
 const Job = require('../models/Job');
 const UserJob = require('../models/UserJob');
 
+// Skill "families": keys are normalized skill names (lowercase, no spaces/dots/hyphens).
+// Values are lowercase substrings to look for in the job text — including a skill's
+// wider ecosystem so e.g. a "Python" user matches a "Django / FastAPI / Pandas" job
+// that never literally says "Python". Only ever ADDS match credit; never removes.
 const SKILL_SYNONYMS = {
-  react: ['reactjs', 'react.js'],
-  node: ['nodejs', 'node.js'],
-  nodejs: ['node', 'node.js'],
-  mongo: ['mongodb', 'mongoose'],
-  mongodb: ['mongo', 'mongoose'],
-  postgres: ['postgresql', 'pg'],
-  postgresql: ['postgres', 'pg'],
-  js: ['javascript'],
-  javascript: ['js'],
+  // Languages
+  python: ['django', 'flask', 'fastapi', 'pandas', 'numpy', 'pytorch', 'tensorflow', 'scikit', 'celery', 'pyspark'],
+  java: ['spring', 'spring boot', 'springboot', 'hibernate', 'jvm', 'maven', 'gradle', 'micronaut'],
+  javascript: ['js', 'node', 'nodejs', 'node.js', 'react', 'angular', 'vue', 'typescript', 'es6'],
+  js: ['javascript', 'node', 'react'],
+  typescript: ['ts', 'javascript'],
   ts: ['typescript'],
-  typescript: ['ts'],
-  express: ['expressjs', 'express.js'],
-  expressjs: ['express', 'express.js'],
-  next: ['nextjs', 'next.js'],
-  nextjs: ['next', 'next.js'],
-  vue: ['vuejs', 'vue.js'],
-  vuejs: ['vue', 'vue.js'],
-  angular: ['angularjs'],
-  aws: ['amazon web services', 'amazon'],
-  gcp: ['google cloud', 'google cloud platform'],
+  golang: ['go', 'gin', 'gorm'],
+  csharp: ['c#', '.net', 'dotnet', 'asp.net', 'aspnet'],
+  dotnet: ['.net', 'c#', 'asp.net', 'aspnet'],
+  php: ['laravel', 'symfony', 'wordpress'],
+  ruby: ['rails', 'ruby on rails'],
+  scala: ['spark', 'akka'],
+  kotlin: ['android', 'jetpack'],
+  swift: ['ios', 'swiftui', 'objective-c'],
+  rust: ['tokio', 'actix'],
+
+  // Frontend
+  react: ['reactjs', 'react.js', 'redux', 'next.js', 'nextjs', 'react native'],
+  angular: ['angularjs', 'rxjs', 'ngrx'],
+  vue: ['vuejs', 'vue.js', 'nuxt'],
+  nextjs: ['next', 'next.js', 'react'],
+  next: ['nextjs', 'next.js', 'react'],
+
+  // Backend / runtime
+  node: ['nodejs', 'node.js', 'express', 'nestjs'],
+  nodejs: ['node', 'node.js', 'express', 'nestjs'],
+  express: ['expressjs', 'express.js', 'node'],
+  expressjs: ['express', 'express.js', 'node'],
+
+  // Databases
+  sql: ['mysql', 'postgresql', 'postgres', 'mssql', 'oracle', 'plsql', 'sql server'],
+  mysql: ['sql', 'mariadb'],
+  postgres: ['postgresql', 'pg', 'sql'],
+  postgresql: ['postgres', 'pg', 'sql'],
+  mongo: ['mongodb', 'mongoose', 'nosql'],
+  mongodb: ['mongo', 'mongoose', 'nosql'],
+  redis: ['cache', 'caching', 'memcached'],
+  elasticsearch: ['elastic', 'opensearch', 'kibana'],
+
+  // Cloud / infra / devops
+  aws: ['amazon web services', 'ec2', 's3', 'lambda', 'dynamodb', 'cloudformation', 'ecs', 'eks'],
+  gcp: ['google cloud', 'google cloud platform', 'bigquery', 'gke'],
+  azure: ['microsoft azure', 'aks', 'azure devops'],
+  docker: ['kubernetes', 'k8s', 'containers', 'containerization'],
+  kubernetes: ['k8s', 'docker', 'helm', 'containers'],
+  devops: ['ci/cd', 'jenkins', 'terraform', 'ansible', 'gitlab ci', 'github actions'],
+  terraform: ['infrastructure as code', 'iac', 'devops'],
+
+  // Data / ML / AI
+  machinelearning: ['ml', 'deep learning', 'tensorflow', 'pytorch', 'scikit', 'nlp', 'computer vision'],
+  ml: ['machine learning', 'deep learning', 'tensorflow', 'pytorch'],
+  ai: ['artificial intelligence', 'machine learning', 'llm', 'genai', 'generative ai'],
+  datascience: ['data scientist', 'machine learning', 'pandas', 'numpy', 'statistics'],
+  spark: ['pyspark', 'hadoop', 'big data', 'databricks'],
+
+  // QA / testing
+  selenium: ['webdriver', 'test automation', 'automation testing'],
+  cypress: ['test automation', 'e2e', 'playwright'],
+  restapi: ['rest', 'restful', 'api', 'graphql', 'web services'],
+  manualtesting: ['qa', 'quality assurance', 'test cases', 'functional testing'],
+  testautomation: ['selenium', 'cypress', 'playwright', 'automation'],
+
+  // Identity / security (helps IAM / AD / Okta profiles)
+  iam: ['identity', 'access management', 'okta', 'active directory', 'azure ad', 'entra', 'sso', 'saml', 'oauth', 'ldap'],
+  okta: ['iam', 'sso', 'identity', 'auth0', 'saml'],
+  activedirectory: ['active directory', 'ad', 'ldap', 'azure ad', 'entra'],
+  microsoftentraid: ['entra', 'azure ad', 'active directory', 'iam', 'identity'],
+
+  // ERP / enterprise (helps SAP profiles)
+  sap: ['s/4hana', 'sap mm', 'sap sd', 'sap fico', 'abap', 'erp'],
+  saps4hana: ['sap', 's/4hana', 'erp', 'sap mm'],
+  sapmm: ['sap', 'materials management', 'procure to pay', 'erp'],
+  proculetopay: ['procure to pay', 'p2p', 'sap mm', 'sourcing'],
+  salesforce: ['apex', 'lightning', 'crm', 'visualforce', 'sfdc'],
 };
 
 const normalizeSkill = (skill) => skill.toLowerCase().replace(/[.\s-]/g, '');
@@ -80,16 +139,18 @@ const GENERIC_TECH_KEYWORDS = [
 
 // Graded role affinity (0..40) instead of a hard pass/fail gate.
 //   • exact match to one of the user's roles → 40
-//   • related tech role (generic keyword)    → 15  (e.g. Backend job for a Frontend user)
+//   • related tech role (generic keyword)    → 22  (e.g. Backend job for a Frontend user)
 //   • no tech signal                          → 0
 // Returns { score, matchedRole } — matchedRole is the exact role hit, or null.
+// Note: "related" (22) sits above the "no role set" neutral (20) so specifying a role
+// never scores worse than leaving it blank.
 const scoreRole = (titleLower, roles) => {
   if (roles.length) {
     for (const r of roles) {
       const keywords = ROLE_KEYWORDS[r] || [r.toLowerCase()];
       if (keywords.some((k) => titleLower.includes(k))) return { score: 40, matchedRole: r };
     }
-    if (GENERIC_TECH_KEYWORDS.some((k) => titleLower.includes(k))) return { score: 15, matchedRole: null };
+    if (GENERIC_TECH_KEYWORDS.some((k) => titleLower.includes(k))) return { score: 22, matchedRole: null };
     return { score: 0, matchedRole: null };
   }
   // No roles set → neutral if it looks like a tech role

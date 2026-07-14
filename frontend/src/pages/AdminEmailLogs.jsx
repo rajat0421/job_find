@@ -54,6 +54,12 @@ export default function AdminEmailLogs() {
   const [emailSaving, setEmailSaving] = useState(false);
   const [emailSaveMsg, setEmailSaveMsg] = useState('');
 
+  // Minimum match score to email (Config: emailScoreThreshold)
+  const [threshold, setThreshold] = useState(50);
+  const [thresholdInput, setThresholdInput] = useState(50);
+  const [thresholdSaving, setThresholdSaving] = useState(false);
+  const [thresholdMsg, setThresholdMsg] = useState('');
+
   const [stats, setStats] = useState(null);
   const [interval, setInterval] = useState(24);
   const [hourIST, setHourIST] = useState(10);
@@ -112,6 +118,21 @@ export default function AdminEmailLogs() {
     const val = data.adminNotificationEmail || '';
     setAdminEmail(val);
     setAdminEmailInput(val);
+    const t = Number(data.emailScoreThreshold) || 50;
+    setThreshold(t);
+    setThresholdInput(t);
+  };
+
+  const handleSaveThreshold = async () => {
+    const n = Number(thresholdInput);
+    if (!Number.isFinite(n) || n < 1 || n > 100) { setThresholdMsg('Enter 1–100'); return; }
+    setThresholdSaving(true); setThresholdMsg('');
+    try {
+      await adminApi.patch('/admin/config', { emailScoreThreshold: String(n) });
+      setThreshold(n);
+      setThresholdMsg('✓ Saved');
+    } catch { setThresholdMsg('Failed'); }
+    finally { setThresholdSaving(false); setTimeout(() => setThresholdMsg(''), 3000); }
   };
 
   const handleSaveEmail = async () => {
@@ -252,6 +273,25 @@ export default function AdminEmailLogs() {
               <button onClick={() => { setAdminEmailInput(''); handleSaveEmail(); }} className="text-xs text-slate-600 hover:text-red-400 transition-colors">Remove</button>
             )}
             {emailSaveMsg && <span className={`text-sm font-medium ${emailSaveMsg.startsWith('✓') ? 'text-green-400' : 'text-red-400'}`}>{emailSaveMsg}</span>}
+          </div>
+        </div>
+
+        {/* Match score threshold */}
+        <div className="bg-[#12121c] border border-white/10 rounded-xl p-6">
+          <h2 className="text-sm font-semibold text-slate-200 mb-1">Minimum match score to email</h2>
+          <p className="text-xs text-slate-600 mb-4">
+            Only jobs scoring at or above this are emailed. Lower it to reach users whose best
+            matches sit just under the bar. <span className="text-violet-400">Currently: {threshold}%</span>
+          </p>
+          <div className="flex gap-3 items-center flex-wrap">
+            <input type="number" min="1" max="100" value={thresholdInput} onChange={(e) => setThresholdInput(e.target.value)}
+              className="bg-[#1a1a28] border border-white/10 rounded-lg px-3 py-2 text-sm text-slate-300 w-24 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            />
+            <button onClick={handleSaveThreshold} disabled={thresholdSaving}
+              className="bg-violet-600 text-white text-sm px-5 py-2 rounded-lg hover:bg-violet-700 transition-colors disabled:opacity-60 font-semibold">
+              {thresholdSaving ? 'Saving…' : 'Save'}
+            </button>
+            {thresholdMsg && <span className={`text-sm font-medium ${thresholdMsg.startsWith('✓') ? 'text-green-400' : 'text-red-400'}`}>{thresholdMsg}</span>}
           </div>
         </div>
 

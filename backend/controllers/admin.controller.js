@@ -711,15 +711,17 @@ const sendDigestForUser = async (req, res) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     const { sendJobDigestEmail, sendAdminDigestCopy } = require('../services/email.service');
+    const { getEmailThreshold } = require('../services/config.service');
     const EmailLog = require('../models/EmailLog');
     const Config = require('../models/Config');
 
-    const newJobs = await UserJob.find({ userId: user._id, emailed: false, score: { $gte: 50 } })
+    const threshold = await getEmailThreshold();
+    const newJobs = await UserJob.find({ userId: user._id, emailed: false, score: { $gte: threshold } })
       .sort({ score: -1 })
       .limit(10)
       .populate('jobId');
 
-    if (!newJobs.length) return res.status(400).json({ message: 'No unread jobs with score ≥ 50 for this user' });
+    if (!newJobs.length) return res.status(400).json({ message: `No unread jobs with score ≥ ${threshold} for this user` });
 
     const jobsPayload = newJobs.map((uj) => ({ job: uj.jobId, score: uj.score }));
     const sentAt = new Date();

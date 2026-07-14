@@ -4,6 +4,7 @@ const UserJob = require('../models/UserJob');
 const EmailLog = require('../models/EmailLog');
 const Config = require('../models/Config');
 const { sendJobDigestEmail, sendAdminDigestCopy } = require('../services/email.service');
+const { getEmailThreshold } = require('../services/config.service');
 
 const getISTHour = () => {
   // IST = UTC + 5:30 — avoid toLocaleString which returns "24" at midnight in some runtimes
@@ -52,12 +53,13 @@ const sendDigest = async ({ force = false } = {}) => {
 
   const adminCfg = await Config.findOne({ key: 'adminNotificationEmail' });
   const adminEmail = adminCfg?.value || null;
+  const threshold = await getEmailThreshold();
 
   for (const user of due) {
     const newJobs = await UserJob.find({
       userId: user._id,
       emailed: false,
-      score: { $gte: 50 },
+      score: { $gte: threshold },
     })
       .sort({ score: -1 })
       .limit(10)
@@ -75,7 +77,7 @@ const sendDigest = async ({ force = false } = {}) => {
       } else if (totalUnread === 0) {
         reason = `Already notified — all ${totalMatched} matching job(s) were sent in earlier emails`;
       } else {
-        reason = `${totalUnread} new job(s) found, but none scored ≥ 50 (below the email threshold)`;
+        reason = `${totalUnread} new job(s) found, but none scored ≥ ${threshold} (below the email threshold)`;
       }
 
       console.log(`[EmailDigest] Skipped ${user.email} — ${reason}`);

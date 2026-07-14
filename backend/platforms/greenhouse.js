@@ -29,6 +29,7 @@ const Company = require('../models/Company');
 
 const fetchJobs = async () => {
   let newCount = 0;
+  let totalFetched = 0;
   const companies = await getCompanies('greenhouse');
 
   for (const { _id, name, token } of companies) {
@@ -41,6 +42,7 @@ const fetchJobs = async () => {
 
       const jobs = res.data?.jobs || [];
       fetched = jobs.length;
+      totalFetched += fetched;
       const company = name || (token.charAt(0).toUpperCase() + token.slice(1));
 
       for (const j of jobs) {
@@ -73,7 +75,7 @@ const fetchJobs = async () => {
     }
   }
 
-  return newCount;
+  return { added: newCount, fetched: totalFetched };
 };
 
 module.exports = { fetchJobs, BOARDS, stripHtml };

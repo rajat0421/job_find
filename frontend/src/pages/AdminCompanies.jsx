@@ -82,10 +82,10 @@ export default function AdminCompanies() {
           <span className="text-xs bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-medium">Admin</span>
           <nav className="flex items-center gap-1 ml-4">
             {navBtn('Users', false, () => navigate('/admin'))}
-            {navBtn('API Logs', false, () => navigate('/admin/logs'))}
-            {navBtn('Email Logs', false, () => navigate('/admin/email-logs'))}
-            {navBtn('Feedback', false, () => navigate('/admin/feedback'))}
+            {navBtn('Analytics', false, () => navigate('/admin/analytics'))}
+            {navBtn('Jobs', false, () => navigate('/admin/jobs'))}
             {navBtn('Companies', true, null)}
+            {navBtn('Email Logs', false, () => navigate('/admin/email-logs'))}
           </nav>
         </div>
         <button onClick={() => { localStorage.removeItem('adminToken'); navigate('/admin'); }} className="text-sm text-red-400 hover:text-red-300 font-medium">

@@ -17,6 +17,7 @@ const MAX_PAGES = 2;
 
 const fetchForCategory = async (appId, appKey, what) => {
   let newCount = 0;
+  let fetched = 0;
   for (let page = 1; page <= MAX_PAGES; page++) {
     try {
       const response = await axios.get('https://api.adzuna.com/v1/api/jobs/in/search/' + page, {
@@ -26,6 +27,7 @@ const fetchForCategory = async (appId, appKey, what) => {
 
       const jobs = response.data.results || [];
       if (!jobs.length) break; // stop paginating this category once results dry up
+      fetched += jobs.length;
 
       for (const j of jobs) {
         const title = j.title?.label || j.title || '';
@@ -52,27 +54,29 @@ const fetchForCategory = async (appId, appKey, what) => {
       break;
     }
   }
-  return newCount;
+  return { added: newCount, fetched };
 };
 
 const fetchJobs = async () => {
   const { ADZUNA_APP_ID: appId, ADZUNA_APP_KEY: appKey } = process.env;
   if (!appId || !appKey) {
     console.warn('[Adzuna] Credentials not set, skipping');
-    return 0;
+    return { added: 0, fetched: 0 };
   }
 
   console.log(`[Adzuna] Fetching ${CATEGORIES.length} categories × ${MAX_PAGES} pages = up to ${CATEGORIES.length * MAX_PAGES} calls`);
 
   let totalNew = 0;
+  let totalFetched = 0;
   for (const what of CATEGORIES) {
-    const count = await fetchForCategory(appId, appKey, what);
-    if (count > 0) console.log(`[Adzuna] "${what}" → ${count} new jobs`);
-    totalNew += count;
+    const { added, fetched } = await fetchForCategory(appId, appKey, what);
+    if (added > 0) console.log(`[Adzuna] "${what}" → ${added} new jobs`);
+    totalNew += added;
+    totalFetched += fetched;
   }
 
-  console.log(`[Adzuna] Done — ${totalNew} new jobs saved across ${CATEGORIES.length} categories`);
-  return totalNew;
+  console.log(`[Adzuna] Done — ${totalNew} new / ${totalFetched} fetched across ${CATEGORIES.length} categories`);
+  return { added: totalNew, fetched: totalFetched };
 };
 
 module.exports = { fetchJobs };

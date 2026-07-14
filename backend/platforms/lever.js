@@ -44,6 +44,7 @@ const baseUrl = (region) => (region === 'eu' ? 'https://api.eu.lever.co' : 'http
 
 const fetchJobs = async () => {
   let newCount = 0;
+  let totalFetched = 0;
   const companies = await getCompanies('lever');
 
   for (const { _id, name: company, token, region } of companies) {
@@ -56,6 +57,7 @@ const fetchJobs = async () => {
 
       const jobs = Array.isArray(res.data) ? res.data : [];
       fetched = jobs.length;
+      totalFetched += fetched;
 
       for (const j of jobs) {
         const title = j.text || '';
@@ -91,7 +93,7 @@ const fetchJobs = async () => {
     }
   }
 
-  return newCount;
+  return { added: newCount, fetched: totalFetched };
 };
 
 module.exports = { fetchJobs, COMPANIES, stripHtml };

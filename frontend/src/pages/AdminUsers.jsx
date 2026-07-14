@@ -142,6 +142,8 @@ const UsersList = () => {
           <span className="text-xs bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-medium">Admin</span>
           <nav className="flex items-center gap-1 ml-4">
             <NavBtn active>Users</NavBtn>
+            <NavBtn onClick={() => navigate('/admin/analytics')}>Analytics</NavBtn>
+            <NavBtn onClick={() => navigate('/admin/jobs')}>Jobs</NavBtn>
             <NavBtn onClick={() => navigate('/admin/logs')}>API Logs</NavBtn>
             <NavBtn onClick={() => navigate('/admin/email-logs')}>Email Logs</NavBtn>
             <NavBtn onClick={() => navigate('/admin/feedback')}>Feedback</NavBtn>

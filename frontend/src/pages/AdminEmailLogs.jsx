@@ -193,6 +193,8 @@ export default function AdminEmailLogs() {
           <span className="text-xs bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-medium">Admin</span>
           <nav className="flex items-center gap-1 ml-4">
             {navBtn('Users', false, () => navigate('/admin'))}
+            {navBtn('Analytics', false, () => navigate('/admin/analytics'))}
+            {navBtn('Jobs', false, () => navigate('/admin/jobs'))}
             {navBtn('API Logs', false, () => navigate('/admin/logs'))}
             {navBtn('Email Logs', true, null)}
             {navBtn('Feedback', false, () => navigate('/admin/feedback'))}

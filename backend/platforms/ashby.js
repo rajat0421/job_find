@@ -23,6 +23,7 @@ const normalizeWorkplace = (wt) => {
 
 const fetchJobs = async () => {
   let newCount = 0;
+  let totalFetched = 0;
   const companies = await getCompanies('ashby');
 
   for (const { _id, name: company, token: board } of companies) {
@@ -34,6 +35,7 @@ const fetchJobs = async () => {
 
       const jobs = res.data?.jobs || [];
       fetched = jobs.length;
+      totalFetched += fetched;
 
       for (const j of jobs) {
         const title = j.title || '';
@@ -68,7 +70,7 @@ const fetchJobs = async () => {
     }
   }
 
-  return newCount;
+  return { added: newCount, fetched: totalFetched };
 };
 
 module.exports = { fetchJobs, BOARDS };

@@ -586,6 +586,127 @@ const getJobBreakdown = async (req, res) => {
   }
 };
 
+// GET /api/admin/analytics — pipeline health dashboard (read-only aggregations)
+const getAnalytics = async (_req, res) => {
+  try {
+    const FetchRun = require('../models/FetchRun');
+    const now = new Date();
+    const istOffsetMs = (5 * 60 + 30) * 60 * 1000;
+    // Start of "today" and "yesterday" in IST, expressed as UTC Date objects
+    const istNow = new Date(now.getTime() + istOffsetMs);
+    const istMidnight = new Date(Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate()));
+    const todayStart = new Date(istMidnight.getTime() - istOffsetMs);
+    const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
+    const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const dayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+    const [
+      totalJobs, jobsBySource, newToday, newYesterday,
+      totalMatches, avgScoreAgg, scoreDist,
+      totalCompanies, enabledCompanies, deadCompanies,
+      emails24h, emails7d,
+      activeUsers,
+      fetchToday, fetchYesterday, recentRuns,
+    ] = await Promise.all([
+      Job.countDocuments(),
+      Job.aggregate([{ $group: { _id: '$source', count: { $sum: 1 } } }]),
+      Job.countDocuments({ createdAt: { $gte: todayStart } }),
+      Job.countDocuments({ createdAt: { $gte: yesterdayStart, $lt: todayStart } }),
+      UserJob.countDocuments(),
+      UserJob.aggregate([{ $group: { _id: null, avg: { $avg: '$score' } } }]),
+      UserJob.aggregate([{
+        $bucket: {
+          groupBy: '$score',
+          boundaries: [0, 40, 50, 75, 101],
+          default: 'other',
+          output: { count: { $sum: 1 } },
+        },
+      }]),
+      Company.countDocuments(),
+      Company.countDocuments({ enabled: true }),
+      Company.countDocuments({ enabled: true, lastJobCount: 0 }),
+      EmailLog.aggregate([{ $match: { sentAt: { $gte: dayAgo } } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+      EmailLog.aggregate([{ $match: { sentAt: { $gte: weekStart } } }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+      User.countDocuments({ isOnboarded: true, isEmailVerified: true }),
+      FetchRun.aggregate([{ $match: { createdAt: { $gte: todayStart } } }, { $group: { _id: null, fetched: { $sum: '$totalFetched' }, added: { $sum: '$totalAdded' }, runs: { $sum: 1 } } }]),
+      FetchRun.aggregate([{ $match: { createdAt: { $gte: yesterdayStart, $lt: todayStart } } }, { $group: { _id: null, fetched: { $sum: '$totalFetched' }, added: { $sum: '$totalAdded' }, runs: { $sum: 1 } } }]),
+      FetchRun.find().sort({ createdAt: -1 }).limit(10).lean(),
+    ]);
+
+    // Users with at least one sendable job (>= threshold, not yet emailed)
+    const threshold = await getEmailThreshold();
+    const usersWithSendable = (await UserJob.aggregate([
+      { $match: { emailed: false, score: { $gte: threshold } } },
+      { $group: { _id: '$userId' } },
+      { $count: 'n' },
+    ]))[0]?.n || 0;
+
+    const asMap = (arr) => arr.reduce((acc, x) => ({ ...acc, [x._id || 'unknown']: x.count }), {});
+    const distMap = scoreDist.reduce((acc, b) => ({ ...acc, [b._id]: b.count }), {});
+
+    res.json({
+      jobs: {
+        total: totalJobs,
+        bySource: asMap(jobsBySource),
+        newToday, newYesterday,
+      },
+      matches: {
+        total: totalMatches,
+        avgScore: Math.round(avgScoreAgg[0]?.avg || 0),
+        distribution: { below40: distMap[0] || 0, mid: distMap[40] || 0, good: distMap[50] || 0, strong: distMap[75] || 0 },
+      },
+      companies: { total: totalCompanies, enabled: enabledCompanies, dead: deadCompanies },
+      emails: { last24h: asMap(emails24h), last7d: asMap(emails7d) },
+      users: { active: activeUsers, withSendableJobs: usersWithSendable, threshold },
+      fetch: {
+        today: fetchToday[0] || { fetched: 0, added: 0, runs: 0 },
+        yesterday: fetchYesterday[0] || { fetched: 0, added: 0, runs: 0 },
+        recentRuns,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+// GET /api/admin/jobs — browse all fetched jobs (paginated, search, filter by source)
+const getJobs = async (req, res) => {
+  try {
+    const { page = 1, limit = 50, search, source, sort = 'createdAt' } = req.query;
+    const filter = {};
+    if (source && source !== 'all') filter.source = source;
+    if (search) {
+      filter.$or = [
+        { title: { $regex: search, $options: 'i' } },
+        { company: { $regex: search, $options: 'i' } },
+      ];
+    }
+    const sortField = ['createdAt', 'postedAt', 'salaryMax'].includes(sort) ? sort : 'createdAt';
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const [jobs, total, bySource] = await Promise.all([
+      Job.find(filter)
+        .select('title company location salaryMin salaryMax source workplaceType applyLink postedAt createdAt')
+        .sort({ [sortField]: -1 })
+        .skip(skip)
+        .limit(Number(limit))
+        .lean(),
+      Job.countDocuments(filter),
+      Job.aggregate([{ $group: { _id: '$source', count: { $sum: 1 } } }]),
+    ]);
+
+    res.json({
+      jobs,
+      total,
+      page: Number(page),
+      pages: Math.ceil(total / Number(limit)),
+      bySource: bySource.reduce((acc, s) => ({ ...acc, [s._id || 'unknown']: s.count }), {}),
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 // ── Company (ATS source) management ──────────────────────────────────────────
 // Live-probe a provider token; returns the job count so admin can verify before saving
 const probeCompany = async (provider, token, region = 'global') => {
@@ -743,4 +864,4 @@ const sendDigestForUser = async (req, res) => {
   }
 };
 
-module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, getConfig, updateConfig, fixGreenhouseDescriptions, rescoreAllUsers, backfillMatches, getLogs, getEmailLogs, getJobBreakdown, sendDigestForUser, getUpcomingEmails, listCompanies, createCompany, updateCompany, deleteCompany };
+module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, getConfig, updateConfig, fixGreenhouseDescriptions, rescoreAllUsers, backfillMatches, getLogs, getEmailLogs, getJobBreakdown, sendDigestForUser, getUpcomingEmails, listCompanies, createCompany, updateCompany, deleteCompany, getJobs, getAnalytics };

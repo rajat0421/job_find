@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import SkillTagInput from '../components/SkillTagInput';
@@ -130,6 +130,16 @@ const Onboarding = () => {
           </h1>
           <p className="text-slate-500 text-sm mt-2">Set up your profile so we can match you with the right jobs</p>
         </div>
+
+        {/* Resume autofill shortcut */}
+        <Link to="/resume" className="block mb-4 bg-violet-600/10 border border-violet-500/30 rounded-2xl p-4 hover:bg-violet-600/15 transition-colors">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-violet-300">Upload your resume to autofill →</p>
+              <p className="text-xs text-slate-500 mt-0.5">We'll extract your skills, roles and experience with AI. You review before saving.</p>
+            </div>
+          </div>
+        </Link>
 
         <div className="bg-[#12121c] border border-white/10 rounded-2xl p-7">
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">

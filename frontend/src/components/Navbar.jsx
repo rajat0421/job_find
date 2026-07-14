@@ -27,6 +27,12 @@ const Navbar = () => {
           >
             Profile
           </Link>
+          <Link
+            to="/resume"
+            className="text-sm text-slate-400 hover:text-white transition-colors font-medium"
+          >
+            Resume
+          </Link>
           <div className="h-3.5 w-px bg-white/10" />
           <span className="text-sm text-slate-600 hidden sm:block">{user?.name || user?.email}</span>
           <button

@@ -8,6 +8,7 @@ const userRoutes = require('./routes/user.routes');
 const jobRoutes = require('./routes/job.routes');
 const adminRoutes = require('./routes/admin.routes');
 const feedbackRoutes = require('./routes/feedback.routes');
+const resumeRoutes = require('./routes/resume.routes');
 
 const app = express();
 
@@ -25,6 +26,7 @@ app.use('/api/user', userRoutes);
 app.use('/api/jobs', jobRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/feedback', feedbackRoutes);
+app.use('/api/resume', resumeRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'up', message: 'running' }));
 

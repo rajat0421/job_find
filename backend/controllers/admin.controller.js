@@ -9,6 +9,7 @@ const Config = require('../models/Config');
 const Company = require('../models/Company');
 const { scoreJob, scoreJobWithBreakdown, matchJobsForAllUsers } = require('../services/jobMatcher.service');
 const { getCompanies } = require('../services/companies.service');
+const { getEmailThreshold } = require('../services/config.service');
 
 const generateJobHash = (title, company, location) =>
   crypto.createHash('md5').update(`${title}-${company}-${location}`).digest('hex');
@@ -832,7 +833,6 @@ const sendDigestForUser = async (req, res) => {
     if (!user) return res.status(404).json({ message: 'User not found' });
 
     const { sendJobDigestEmail, sendAdminDigestCopy } = require('../services/email.service');
-    const { getEmailThreshold } = require('../services/config.service');
     const EmailLog = require('../models/EmailLog');
     const Config = require('../models/Config');
 

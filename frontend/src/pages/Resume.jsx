@@ -3,60 +3,26 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import api from '../services/api';
-import SkillTagInput from '../components/SkillTagInput';
-import RoleSelector from '../components/RoleSelector';
 
-const inputCls = 'w-full bg-[#1a1a28] border border-white/10 rounded-lg px-3.5 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition';
-const labelCls = 'block text-sm font-medium text-slate-300 mb-1.5';
-
-// Lightweight chip input (locations, education)
-const TagInput = ({ label, hint, placeholder, tags, onChange }) => {
-  const [input, setInput] = useState('');
-  const add = () => { const v = input.trim(); if (v && !tags.includes(v)) onChange([...tags, v]); setInput(''); };
-  return (
-    <div>
-      <label className={labelCls}>{label}</label>
-      {hint && <p className="text-xs text-slate-600 mb-2">{hint}</p>}
-      <div className="flex gap-2">
-        <input type="text" value={input} onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
-          className={inputCls} placeholder={placeholder} />
-        <button type="button" onClick={add} className="px-4 py-2.5 bg-white/5 border border-white/10 text-slate-300 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors">Add</button>
-      </div>
-      {tags.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-2.5">
-          {tags.map((t) => (
-            <span key={t} className="inline-flex items-center gap-1 bg-violet-600/15 text-violet-300 border border-violet-500/20 text-xs font-medium px-2.5 py-1 rounded-full">
-              {t}<button onClick={() => onChange(tags.filter((x) => x !== t))} className="hover:text-white leading-none">&times;</button>
-            </span>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-const emptyForm = { name: '', email: '', phone: '', summary: '', skills: [], desiredRoles: [], experienceYears: 0, locations: [], education: [], projects: [], certifications: [] };
+const Chip = ({ children }) => (
+  <span className="text-xs bg-white/5 text-slate-300 px-2.5 py-1 rounded-full">{children}</span>
+);
 
 const Resume = () => {
   const { user, login, token } = useAuth();
-  const [step, setStep] = useState('upload'); // upload | parsing | review | done
+  const [step, setStep] = useState('upload'); // upload | parsing | confirm | done
   const [error, setError] = useState('');
   const [fileName, setFileName] = useState('');
-  const [fromCache, setFromCache] = useState(false);
+  const [existing, setExisting] = useState(null); // { fileName, createdAt } of a previously uploaded resume
+  const [parsed, setParsed] = useState(null); // extracted data awaiting confirmation
   const [resumeProfileId, setResumeProfileId] = useState(null);
-  const [form, setForm] = useState(emptyForm);
   const [confirming, setConfirming] = useState(false);
   const fileRef = useRef(null);
 
-  // Load a previous parse (if any) so returning users can re-review/edit
+  // Just show what's on file already — no full edit form on load
   useEffect(() => {
     api.get('/resume').then((res) => {
-      const d = res.data;
-      setForm({ ...emptyForm, ...d.parsed });
-      setResumeProfileId(d.resumeProfileId);
-      setFileName(d.fileName || '');
-      setStep('review');
+      setExisting({ fileName: res.data.fileName, createdAt: res.data.createdAt });
     }).catch(() => {});
   }, []);
 
@@ -72,10 +38,9 @@ const Resume = () => {
       const fd = new FormData();
       fd.append('file', file);
       const res = await api.post('/resume/upload', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      setForm({ ...emptyForm, ...res.data.parsed });
+      setParsed(res.data.parsed || {});
       setResumeProfileId(res.data.resumeProfileId);
-      setFromCache(res.data.fromCache);
-      setStep('review');
+      setStep('confirm');
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to parse resume');
       setStep('upload');
@@ -85,20 +50,30 @@ const Resume = () => {
   const handleConfirm = async () => {
     setConfirming(true); setError('');
     try {
+      // Non-destructive on the backend: blank/missing fields leave the existing profile untouched
       await api.put('/resume/confirm', {
         resumeProfileId,
-        name: form.name,
-        skills: form.skills,
-        desiredRoles: form.desiredRoles,
-        experienceYears: form.experienceYears,
-        locations: form.locations,
-        education: form.education,
+        name: parsed.name,
+        skills: parsed.skills,
+        desiredRoles: parsed.desiredRoles,
+        experienceYears: parsed.experienceYears,
+        locations: parsed.locations,
+        education: parsed.education,
       });
-      login(token, { ...user, name: form.name });
+      if (parsed.name) login(token, { ...user, name: parsed.name });
       setStep('done');
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to update profile');
-    } finally { setConfirming(false); }
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const handleDiscard = () => {
+    setParsed(null);
+    setResumeProfileId(null);
+    setError('');
+    setStep('upload');
   };
 
   return (
@@ -106,13 +81,19 @@ const Resume = () => {
       <Navbar />
       <div className="max-w-lg mx-auto px-4 py-10">
         <div className="mb-6">
-          <h1 className="text-xl font-bold text-white">Resume autofill</h1>
-          <p className="text-sm text-slate-500 mt-0.5">Upload your resume and we'll extract your profile with AI. You review everything before it's saved.</p>
+          <h1 className="text-xl font-bold text-white">Resume</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Upload your resume, review what we found, then confirm to update your profile.</p>
         </div>
 
         {/* Upload */}
         {step === 'upload' && (
           <div className="bg-[#12121c] border border-white/10 rounded-2xl p-8">
+            {existing?.fileName && (
+              <p className="text-xs text-slate-500 mb-4">
+                On file: <span className="text-slate-300">{existing.fileName}</span>
+                {existing.createdAt && ` · uploaded ${new Date(existing.createdAt).toLocaleDateString()}`}
+              </p>
+            )}
             <div
               onClick={() => fileRef.current?.click()}
               onDragOver={(e) => e.preventDefault()}
@@ -137,46 +118,61 @@ const Resume = () => {
           </div>
         )}
 
-        {/* Review */}
-        {step === 'review' && (
+        {/* Confirm — read-only preview of what was extracted, nothing editable here */}
+        {step === 'confirm' && parsed && (
           <div className="bg-[#12121c] border border-white/10 rounded-2xl p-7">
-            <div className="flex items-center justify-between mb-5">
-              <p className="text-sm text-slate-400">Review &amp; edit — this will <span className="text-white font-medium">replace</span> your current profile.</p>
-              {fromCache && <span className="text-xs text-slate-600">reused cached parse</span>}
-            </div>
+            <p className="text-sm text-slate-400 mb-5">
+              Here's what we found in <span className="text-white font-medium">{fileName}</span>.
+              Confirming will update your profile — existing fields are only overwritten where something new was detected.
+            </p>
 
-            <div className="flex flex-col gap-5">
-              <div>
-                <label className={labelCls}>Full name</label>
-                <input className={inputCls} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Your full name" />
-              </div>
-
-              {(form.email || form.phone) && (
-                <div className="flex gap-3 text-xs text-slate-500">
-                  {form.email && <span>✉ {form.email}</span>}
-                  {form.phone && <span>☎ {form.phone}</span>}
+            <div className="flex flex-col gap-4">
+              {parsed.name && (
+                <div>
+                  <p className="text-xs text-slate-600 mb-1.5">Name</p>
+                  <p className="text-sm text-slate-200">{parsed.name}</p>
                 </div>
               )}
 
-              <RoleSelector selected={form.desiredRoles} onChange={(desiredRoles) => setForm({ ...form, desiredRoles })} />
-
-              <SkillTagInput label="Skills" tags={form.skills} onChange={(skills) => setForm({ ...form, skills })} />
-
-              <div>
-                <label className={labelCls}>Years of experience</label>
-                <input type="number" min="0" className={inputCls} value={form.experienceYears}
-                  onChange={(e) => setForm({ ...form, experienceYears: e.target.value })} />
-              </div>
-
-              <TagInput label="Preferred locations" placeholder="e.g. Bangalore, Remote…" tags={form.locations} onChange={(locations) => setForm({ ...form, locations })} />
-
-              <TagInput label="Education" hint="Highest qualification is used on your profile" placeholder="e.g. B.E Computer Science, VIT" tags={form.education} onChange={(education) => setForm({ ...form, education })} />
-
-              {form.projects?.length > 0 && (
+              {parsed.desiredRoles?.length > 0 && (
                 <div>
-                  <label className={labelCls}>Projects <span className="text-slate-600 font-normal">(kept on file)</span></label>
+                  <p className="text-xs text-slate-600 mb-1.5">Roles detected</p>
                   <div className="flex flex-wrap gap-1.5">
-                    {form.projects.map((p) => <span key={p} className="text-xs bg-white/5 text-slate-400 px-2.5 py-1 rounded-full">{p}</span>)}
+                    {parsed.desiredRoles.map((r) => <Chip key={r}>{r}</Chip>)}
+                  </div>
+                </div>
+              )}
+
+              {parsed.skills?.length > 0 && (
+                <div>
+                  <p className="text-xs text-slate-600 mb-1.5">Skills detected</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {parsed.skills.map((s) => <Chip key={s}>{s}</Chip>)}
+                  </div>
+                </div>
+              )}
+
+              {parsed.experienceYears > 0 && (
+                <div>
+                  <p className="text-xs text-slate-600 mb-1.5">Experience</p>
+                  <p className="text-sm text-slate-200">{parsed.experienceYears} years</p>
+                </div>
+              )}
+
+              {parsed.locations?.length > 0 && (
+                <div>
+                  <p className="text-xs text-slate-600 mb-1.5">Locations</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {parsed.locations.map((l) => <Chip key={l}>{l}</Chip>)}
+                  </div>
+                </div>
+              )}
+
+              {parsed.education?.length > 0 && (
+                <div>
+                  <p className="text-xs text-slate-600 mb-1.5">Education</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {parsed.education.map((e) => <Chip key={e}>{e}</Chip>)}
                   </div>
                 </div>
               )}
@@ -188,9 +184,9 @@ const Resume = () => {
                   className="flex-1 bg-violet-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-violet-700 transition-colors disabled:opacity-50">
                   {confirming ? 'Saving…' : 'Confirm & save to profile'}
                 </button>
-                <button onClick={() => { setStep('upload'); setError(''); }}
+                <button onClick={handleDiscard}
                   className="px-4 py-2.5 border border-white/10 text-slate-400 rounded-lg text-sm font-medium hover:bg-white/5 transition-colors">
-                  Re-upload
+                  Discard
                 </button>
               </div>
             </div>

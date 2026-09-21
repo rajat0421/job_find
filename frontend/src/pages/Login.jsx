@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import GoogleAuthButton from '../components/GoogleAuthButton';
 import api from '../services/api';
 
 const input = 'w-full bg-[#1a1a28] border border-white/10 rounded-lg px-3.5 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition';
@@ -91,6 +92,16 @@ const Login = () => {
               {loading ? 'Signing in...' : 'Sign in'}
             </button>
           </form>
+
+          <div className="flex items-center gap-3 my-5">
+            <div className="flex-1 h-px bg-white/10" />
+            <span className="text-xs text-slate-600">OR</span>
+            <div className="flex-1 h-px bg-white/10" />
+          </div>
+
+          <div className="flex justify-center">
+            <GoogleAuthButton onError={setError} />
+          </div>
         </div>
 
         <p className="text-center text-sm text-slate-600 mt-5">

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import GoogleAuthButton from '../components/GoogleAuthButton';
 import api from '../services/api';
 
 const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%';
@@ -110,6 +111,16 @@ const Register = () => {
               {loading ? 'Creating account...' : 'Create account'}
             </button>
           </form>
+
+          <div className="flex items-center gap-3 my-5">
+            <div className="flex-1 h-px bg-white/10" />
+            <span className="text-xs text-slate-600">OR</span>
+            <div className="flex-1 h-px bg-white/10" />
+          </div>
+
+          <div className="flex justify-center">
+            <GoogleAuthButton onError={setError} />
+          </div>
         </div>
 
         <p className="text-center text-sm text-slate-600 mt-5">

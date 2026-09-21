@@ -1,10 +1,13 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const { OAuth2Client } = require('google-auth-library');
 const User = require('../models/User');
 const OtpVerification = require('../models/OtpVerification');
 const { generateOtp, otpExpiry } = require('../utils/otp');
 const { sendOtpEmail, sendPasswordResetEmail } = require('../services/email.service');
 const { matchJobsForUser } = require('../services/jobMatcher.service');
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 const register = async (req, res) => {
   try {
@@ -74,6 +77,7 @@ const login = async (req, res) => {
     const user = await User.findOne({ email });
     if (!user) return res.status(401).json({ message: 'Invalid credentials' });
     if (!user.isEmailVerified) return res.status(403).json({ message: 'Please verify your email first' });
+    if (!user.password) return res.status(400).json({ message: 'This account uses Google sign-in. Please continue with Google.' });
 
     const match = await bcrypt.compare(password, user.password);
     if (!match) return res.status(401).json({ message: 'Invalid credentials' });
@@ -157,4 +161,42 @@ const resetPassword = async (req, res) => {
   }
 };
 
-module.exports = { register, verifyOtp, login, resendOtp, forgotPassword, resetPassword };
+const googleAuth = async (req, res) => {
+  try {
+    const { credential } = req.body;
+    if (!credential) return res.status(400).json({ message: 'Google credential is required' });
+
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({ idToken: credential, audience: process.env.GOOGLE_CLIENT_ID });
+      payload = ticket.getPayload();
+    } catch {
+      return res.status(401).json({ message: 'Invalid Google credential' });
+    }
+
+    const { sub: googleId, email, name, email_verified } = payload;
+    if (!email_verified) return res.status(403).json({ message: 'Google email is not verified' });
+
+    let user = await User.findOne({ email });
+    if (!user) {
+      user = await User.create({ email, name, googleId, isEmailVerified: true });
+    } else if (!user.googleId) {
+      // Existing local account signing in with Google for the first time — link it
+      await User.updateOne({ email }, { googleId, isEmailVerified: true, name: user.name || name });
+      user = await User.findOne({ email });
+    }
+
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
+    res.json({ token, isOnboarded: user.isOnboarded, name: user.name, email: user.email });
+
+    if (user.isOnboarded) {
+      matchJobsForUser(user._id).catch((err) =>
+        console.error('[Matcher] Google login match failed:', err.message)
+      );
+    }
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { register, verifyOtp, login, resendOtp, forgotPassword, resetPassword, googleAuth };

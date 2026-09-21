@@ -18,3 +18,5 @@ services:
         sync: false
       - key: ADMIN_TOKEN
         sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false

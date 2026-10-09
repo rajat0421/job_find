@@ -8,6 +8,15 @@ services:
     envVars:
       - key: PORT
         value: 5000
+      - key: NODE_ENV
+        value: production
+      # Optional — defaults to "all" (API + background schedulers in one
+      # process), which is this service's current behavior. Set to "api" or
+      # "worker" only when/if the API and background jobs are split into two
+      # separate Render services; "worker" should also use `node worker.js`
+      # as its startCommand instead of `node server.js`.
+      - key: PROCESS_ROLE
+        value: all
       - key: MONGO_URI
         sync: false
       - key: JWT_SECRET

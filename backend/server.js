@@ -1,17 +1,13 @@
 require('dotenv').config();
-const app = require('./app');
-const connectDB = require('./config/db');
-const { startFetchJobsCron } = require('./jobs/fetchJobs.job');
-const { startMatchJobsCron } = require('./jobs/matchJobs.job');
-const { startDailyEmailCron } = require('./jobs/dailyEmail.job');
+const { startProcess } = require('./bootstrap');
+const { setupGracefulShutdown } = require('./shutdown');
 
-const PORT = process.env.PORT || 5000;
-
-connectDB().then(() => {
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-    startFetchJobsCron();
-    startMatchJobsCron();
-    startDailyEmailCron();
+// Default entry point — role is read from PROCESS_ROLE (defaults to "all",
+// the existing single-Render-service behavior: API + background schedulers
+// in one process). See ./worker.js for the dedicated worker-only entry point.
+startProcess()
+  .then((ctx) => setupGracefulShutdown(ctx))
+  .catch((err) => {
+    console.error('[Server] Failed to start:', err);
+    process.exit(1);
   });
-});

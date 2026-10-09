@@ -106,10 +106,43 @@ const sendDigest = async ({ force = false } = {}) => {
   }
 };
 
-const startDailyEmailCron = () => {
-  // Runs 20 min past every hour — offset from fetchJobs (which runs at :00) so fresh jobs are ready
-  cron.schedule('20 * * * *', sendDigest, { timezone: 'Asia/Kolkata' });
-  console.log('[Cron] Email digest scheduled — runs every hour at :20, per-user schedule applied');
+let registered = false;
+let task = null;
+let running = false;
+
+// Cron-only wrapper around sendDigest(). `sendDigest` itself stays exported
+// and directly callable unwrapped — the admin "trigger digest now" / "send
+// digest for user" endpoints call it straight, on demand, and must keep
+// working exactly as before regardless of whether a cron tick happens to be
+// in flight. This guard only prevents the cron's OWN hourly tick from
+// overlapping itself.
+const runEmailTick = async () => {
+  if (running) {
+    console.warn('[Cron] Email tick skipped — previous digest run is still in progress');
+    return;
+  }
+  running = true;
+  try {
+    await sendDigest();
+  } finally {
+    running = false;
+  }
 };
 
-module.exports = { startDailyEmailCron, sendDigest, isDue, getISTHour, istDayStr };
+// Guarded against being registered twice in the same process (idempotent —
+// returns the existing task instead) and against overlapping runs.
+const startDailyEmailCron = () => {
+  if (registered) {
+    console.warn('[Cron] Email cron already registered in this process — ignoring duplicate call');
+    return task;
+  }
+  registered = true;
+  // Runs 20 min past every hour — offset from fetchJobs (which runs at :00) so fresh jobs are ready
+  task = cron.schedule('20 * * * *', runEmailTick, { timezone: 'Asia/Kolkata' });
+  console.log('[Cron] Email digest scheduled — runs every hour at :20, per-user schedule applied');
+  return task;
+};
+
+const isEmailRunning = () => running;
+
+module.exports = { startDailyEmailCron, sendDigest, isDue, getISTHour, istDayStr, isEmailRunning };

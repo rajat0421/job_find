@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const logger = require('./middleware/logger.middleware');
 const requestLogMiddleware = require('./middleware/requestLog.middleware');
+const { isAdmin } = require('./middleware/admin.middleware');
 
 const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
@@ -30,19 +31,24 @@ app.use('/api/resume', resumeRoutes);
 
 app.get('/api/health', (_req, res) => res.json({ status: 'up', message: 'running' }));
 
-// Manual trigger for testing — remove before production
-app.post('/api/dev/fetch-jobs', async (_req, res) => {
-  try {
-    const { fetchAdzunaJobs } = require('./services/jobFetcher.service');
-    const { matchJobsForAllUsers } = require('./services/jobMatcher.service');
-    await fetchAdzunaJobs();
-    await matchJobsForAllUsers();
-    const Job = require('./models/Job');
-    const count = await Job.countDocuments();
-    res.json({ message: 'Done', totalJobsInDB: count });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+// Manual full-pipeline trigger for local development only. Not registered at
+// all in production (so it's a plain 404, not just access-denied), and even
+// in dev it still requires the admin token — this must never be a public,
+// unauthenticated way to trigger the fetch+match pipeline.
+if (process.env.NODE_ENV !== 'production') {
+  app.post('/api/dev/fetch-jobs', isAdmin, async (_req, res) => {
+    try {
+      const { fetchAdzunaJobs } = require('./services/jobFetcher.service');
+      const { matchJobsForAllUsers } = require('./services/jobMatcher.service');
+      await fetchAdzunaJobs();
+      await matchJobsForAllUsers();
+      const Job = require('./models/Job');
+      const count = await Job.countDocuments();
+      res.json({ message: 'Done', totalJobsInDB: count });
+    } catch (err) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+}
 
 module.exports = app;

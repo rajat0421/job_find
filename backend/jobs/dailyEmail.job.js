@@ -24,6 +24,88 @@ const istDayStr = (d) => new Date(d.getTime() + (5 * 60 + 30) * 60 * 1000).toISO
 // half their configured frequency, drifting later with every send.
 const DUE_GRACE_MS = 5 * 60 * 1000; // 5 min (safely less than the 1h cron granularity)
 
+// ── Idempotency (Improvement 11) ────────────────────────────────────────────
+// The email cron fires at most once per hour (`20 * * * *`), so an IST
+// hour-bucket is the natural, stable identifier for "which scheduled
+// occurrence is this delivery for". Two executions of the SAME hour's tick
+// (e.g. a crash-and-restart within the same hour, or two processes briefly
+// racing) compute the IDENTICAL string; the next hour always computes a new
+// one. Deliberately NOT based on Date.now()/a random id — those would be
+// different on every call and defeat deduplication entirely.
+const istHourBucketStr = (d) => new Date(d.getTime() + (5 * 60 + 30) * 60 * 1000).toISOString().slice(0, 13); // 'YYYY-MM-DDTHH'
+
+// A narrower bucket used ONLY for manual sends (admin "trigger now" actions).
+// Wide enough to absorb a genuine retry of the same click/request (e.g. a
+// client or proxy retrying a timed-out call a few seconds later); narrow
+// enough that a deliberate second manual send minutes later is never blocked.
+const istMinuteBucketStr = (d) => new Date(d.getTime() + (5 * 60 + 30) * 60 * 1000).toISOString().slice(0, 16); // 'YYYY-MM-DDTHH:MM'
+
+// Separate key NAMESPACES ('scheduled:' vs 'manual:') are the mechanism that
+// satisfies "a manual send must never reserve or block a scheduled digest"
+// (and vice versa) — the two can never collide on the same idempotency key
+// even for the same user in the same minute, so claiming one never prevents
+// claiming the other. Cross-trigger CONTENT duplication (the same job being
+// emailed twice via two different trigger types) is independently prevented
+// by the pre-existing `emailed:false` selection filter, unchanged by this work.
+const scheduledIdempotencyKey = (userId, now = new Date()) => `scheduled:${userId}:${istHourBucketStr(now)}`;
+const manualIdempotencyKey = (userId, now = new Date()) => `manual:${userId}:${istMinuteBucketStr(now)}`;
+
+/**
+ * Atomically claims the right to send ONE specific logical digest delivery,
+ * identified by `idempotencyKey`. This — not the in-memory `running` flag
+ * below, which only stops THIS process's own cron tick from overlapping
+ * itself — is what actually prevents duplicate sends across concurrent
+ * processes or a process restart.
+ *
+ * Mechanism:
+ *  - The first caller for a given key wins by inserting a new EmailLog row
+ *    with status:'claimed'. A unique index on idempotencyKey (see
+ *    models/EmailLog.js) makes MongoDB itself — not application logic — the
+ *    arbiter of "who got here first", which is what makes this safe across
+ *    multiple processes, not just multiple requests in one process.
+ *  - Any other caller for the same key gets a MongoDB duplicate-key error
+ *    (code 11000) on that insert. This is treated as an expected "already
+ *    claimed" signal, not an application error, and is resolved by reading
+ *    what the existing row's status is:
+ *      - 'sent'    → already genuinely delivered. Never retried — this is
+ *                    the core duplicate-prevention guarantee.
+ *      - 'claimed' → AMBIGUOUS: either another attempt is still in flight,
+ *                    or a previous attempt crashed after claiming but before
+ *                    recording an outcome. Per explicit instruction to
+ *                    prefer duplicate-prevention over retrying an ambiguous
+ *                    send, this is intentionally NEVER auto-retried here.
+ *                    The row stays visibly 'claimed' (distinct from 'sent'
+ *                    in EmailLog/admin views — never silently mistaken for a
+ *                    success) until a human investigates, or — for a
+ *                    SCHEDULED key — until it naturally stops mattering once
+ *                    the occurrence advances (the next hour computes a brand
+ *                    new key), so an abandoned claim can delay at most one
+ *                    occurrence, never block all future ones.
+ *      - 'failed'  → the provider definitively did NOT deliver it last time
+ *                    (this is known, not ambiguous), so a retry is safe. An
+ *                    atomic findOneAndUpdate transitions it back to
+ *                    'claimed' ONLY if it is still 'failed' at that exact
+ *                    instant, so two concurrent retries can't both win.
+ */
+const claimDelivery = async (idempotencyKey, meta) => {
+  try {
+    const doc = await EmailLog.create({ ...meta, idempotencyKey, status: 'claimed', claimedAt: new Date(), jobCount: 0 });
+    return { claimed: true, doc };
+  } catch (err) {
+    if (err?.code !== 11000) throw err; // a genuinely unexpected error — never swallow it
+    const existing = await EmailLog.findOne({ idempotencyKey });
+    if (existing?.status === 'failed') {
+      const reclaimed = await EmailLog.findOneAndUpdate(
+        { idempotencyKey, status: 'failed' },
+        { $set: { status: 'claimed', claimedAt: new Date(), reason: '' } },
+        { new: true }
+      );
+      if (reclaimed) return { claimed: true, doc: reclaimed };
+    }
+    return { claimed: false, doc: existing || null };
+  }
+};
+
 const isDue = (user) => {
   const now = Date.now();
 
@@ -129,13 +211,33 @@ const sendDigest = async ({ force = false } = {}) => {
       matchedRole: uj.matchedRole,
       reasons: uj.reasons,
     }));
-    const sentAt = new Date();
+    // Step 2 of the required ordering: claim the intended delivery BEFORE
+    // sending anything. `force` (admin "send now") uses the manual namespace
+    // so it can never reserve/block this user's next scheduled occurrence,
+    // and vice versa — see the key builders above.
+    const now = new Date();
+    const idempotencyKey = force ? manualIdempotencyKey(user._id, now) : scheduledIdempotencyKey(user._id, now);
+    const claim = await claimDelivery(idempotencyKey, { userId: user._id, email: user.email, name: user.name || '' });
+
+    if (!claim.claimed) {
+      // Someone else (a concurrent process, or this exact occurrence already
+      // having been sent/claimed) already owns this delivery. No new
+      // EmailLog row is created here — the existing claimed/sent row already
+      // represents this occurrence, so a second 'skipped' row would just be
+      // noise, not a correction.
+      console.log(`[EmailDigest] Skipped ${user.email} — delivery already claimed for this ${force ? 'manual' : 'scheduled'} occurrence (${idempotencyKey})`);
+      continue;
+    }
 
     try {
       await sendJobDigestEmail(user.email, user.name || 'there', jobsPayload);
+      // Only reachable after the provider call above resolved without
+      // throwing — i.e. after sendHtmlEmail's own success check (see
+      // email.service.js) has already ruled out a 200-but-failed response.
+      const sentAt = new Date();
       await UserJob.updateMany({ _id: { $in: newJobs.map((uj) => uj._id) } }, { emailed: true });
       await User.updateOne({ _id: user._id }, { lastEmailedAt: sentAt });
-      await EmailLog.create({ userId: user._id, email: user.email, name: user.name || '', jobCount: newJobs.length, status: 'sent' });
+      await EmailLog.findByIdAndUpdate(claim.doc._id, { $set: { status: 'sent', jobCount: newJobs.length, sentAt } });
       console.log(`[EmailDigest] Sent to ${user.email} — ${newJobs.length} jobs`);
 
       if (adminEmail) {
@@ -144,7 +246,11 @@ const sendDigest = async ({ force = false } = {}) => {
       }
     } catch (err) {
       console.error(`[EmailDigest] Failed for ${user.email}:`, err.message);
-      await EmailLog.create({ userId: user._id, email: user.email, name: user.name || '', jobCount: 0, status: 'failed', reason: err.message });
+      // A definite, known non-delivery — UserJob/lastEmailedAt are correctly
+      // left untouched (unreachable above), and this claim's own status
+      // moves to 'failed', which claimDelivery() treats as safely retryable
+      // the next time this same idempotency key is attempted.
+      await EmailLog.findByIdAndUpdate(claim.doc._id, { $set: { status: 'failed', reason: err.message, jobCount: 0 } });
     }
   }
 };
@@ -188,4 +294,16 @@ const startDailyEmailCron = () => {
 
 const isEmailRunning = () => running;
 
-module.exports = { startDailyEmailCron, sendDigest, isDue, getISTHour, istDayStr, isEmailRunning };
+module.exports = {
+  startDailyEmailCron,
+  sendDigest,
+  isDue,
+  getISTHour,
+  istDayStr,
+  isEmailRunning,
+  // Exported for reuse (admin.controller.js's manual per-user send) and for
+  // direct unit testing of the idempotency mechanism itself.
+  claimDelivery,
+  scheduledIdempotencyKey,
+  manualIdempotencyKey,
+};

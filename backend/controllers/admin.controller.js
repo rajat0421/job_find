@@ -846,6 +846,12 @@ const getUpcomingEmails = async (_req, res) => {
   }
 };
 
+// POST /api/admin/users/:id/send-digest — the admin "send now" manual action
+// for a single user. Uses the SAME claim mechanism as the scheduled cron
+// (Improvement 11), but in the 'manual:' key namespace (manualIdempotencyKey)
+// so that: (a) a retried/double-clicked request for this user can't send
+// twice, and (b) this manual send can never reserve or block the user's next
+// SCHEDULED digest, which claims under a completely separate 'scheduled:' key.
 const sendDigestForUser = async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select('-password');
@@ -854,6 +860,7 @@ const sendDigestForUser = async (req, res) => {
     const { sendJobDigestEmail, sendAdminDigestCopy } = require('../services/email.service');
     const EmailLog = require('../models/EmailLog');
     const Config = require('../models/Config');
+    const { claimDelivery, manualIdempotencyKey } = require('../jobs/dailyEmail.job');
 
     const threshold = await getEmailThreshold();
     const newJobs = await UserJob.find({ userId: user._id, emailed: false, score: { $gte: threshold } })
@@ -863,21 +870,37 @@ const sendDigestForUser = async (req, res) => {
 
     if (!newJobs.length) return res.status(400).json({ message: `No unread jobs with score ≥ ${threshold} for this user` });
 
-    const jobsPayload = newJobs.map((uj) => ({ job: uj.jobId, score: uj.score, matchedSkills: uj.matchedSkills, matchedRole: uj.matchedRole, reasons: uj.reasons }));
-    const sentAt = new Date();
-
-    await sendJobDigestEmail(user.email, user.name || 'there', jobsPayload);
-    await UserJob.updateMany({ _id: { $in: newJobs.map((uj) => uj._id) } }, { emailed: true });
-    await User.updateOne({ _id: user._id }, { lastEmailedAt: sentAt });
-    await EmailLog.create({ userId: user._id, email: user.email, name: user.name || '', jobCount: newJobs.length });
-
-    const adminCfg = await Config.findOne({ key: 'adminNotificationEmail' });
-    if (adminCfg?.value) {
-      sendAdminDigestCopy(adminCfg.value, user.email, user.name || 'there', sentAt, jobsPayload)
-        .catch((err) => console.error('[Admin] sendDigestForUser admin copy failed:', err.message));
+    const claim = await claimDelivery(manualIdempotencyKey(user._id), { userId: user._id, email: user.email, name: user.name || '' });
+    if (!claim.claimed) {
+      // Same manual send already claimed/sent moments ago — most likely a
+      // double-click or an HTTP retry of this exact request. Not an error;
+      // report it plainly rather than silently sending a second time.
+      return res.status(409).json({ message: `A send for ${user.email} was already initiated moments ago — wait a moment before retrying.` });
     }
 
-    res.json({ message: `Email sent to ${user.email} with ${newJobs.length} jobs` });
+    const jobsPayload = newJobs.map((uj) => ({ job: uj.jobId, score: uj.score, matchedSkills: uj.matchedSkills, matchedRole: uj.matchedRole, reasons: uj.reasons }));
+
+    try {
+      await sendJobDigestEmail(user.email, user.name || 'there', jobsPayload);
+      const sentAt = new Date();
+      await UserJob.updateMany({ _id: { $in: newJobs.map((uj) => uj._id) } }, { emailed: true });
+      await User.updateOne({ _id: user._id }, { lastEmailedAt: sentAt });
+      await EmailLog.findByIdAndUpdate(claim.doc._id, { $set: { status: 'sent', jobCount: newJobs.length, sentAt } });
+
+      const adminCfg = await Config.findOne({ key: 'adminNotificationEmail' });
+      if (adminCfg?.value) {
+        sendAdminDigestCopy(adminCfg.value, user.email, user.name || 'there', sentAt, jobsPayload)
+          .catch((err) => console.error('[Admin] sendDigestForUser admin copy failed:', err.message));
+      }
+
+      res.json({ message: `Email sent to ${user.email} with ${newJobs.length} jobs` });
+    } catch (err) {
+      // Known non-delivery — UserJob/lastEmailedAt are correctly left
+      // untouched (unreachable above), and this claim is marked 'failed',
+      // which claimDelivery() treats as safely retryable on the next attempt.
+      await EmailLog.findByIdAndUpdate(claim.doc._id, { $set: { status: 'failed', reason: err.message, jobCount: 0 } });
+      res.status(500).json({ message: err.message });
+    }
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

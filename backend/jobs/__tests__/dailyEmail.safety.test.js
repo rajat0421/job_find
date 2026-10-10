@@ -11,7 +11,14 @@
 jest.mock('node-cron', () => ({ schedule: jest.fn() }));
 jest.mock('../../models/User', () => ({ find: jest.fn(), updateOne: jest.fn() }));
 jest.mock('../../models/UserJob', () => ({ find: jest.fn(), countDocuments: jest.fn(), updateMany: jest.fn() }));
-jest.mock('../../models/EmailLog', () => ({ create: jest.fn() }));
+// create() resolves with an _id (simulates the claimDelivery() insert) so the
+// success/failure path's subsequent findByIdAndUpdate(claim.doc._id, ...) has
+// something to operate on — see Improvement 11's dailyEmail.job.js changes.
+jest.mock('../../models/EmailLog', () => ({
+  create: jest.fn().mockResolvedValue({ _id: 'log-id' }),
+  findByIdAndUpdate: jest.fn().mockResolvedValue({}),
+  findOne: jest.fn(),
+}));
 jest.mock('../../models/Config', () => ({ findOne: jest.fn() }));
 jest.mock('../../services/email.service', () => ({
   sendJobDigestEmail: jest.fn(),
@@ -56,9 +63,14 @@ test('send failure: does NOT mark emailed, does NOT advance lastEmailedAt, logs 
 
   expect(UserJob.updateMany).not.toHaveBeenCalled();
   expect(User.updateOne).not.toHaveBeenCalled();
-  expect(EmailLog.create).toHaveBeenCalledWith(
-    expect.objectContaining({ userId: 'u1', status: 'failed', jobCount: 0 })
-  );
+  // The delivery was claimed (Improvement 11), then transitioned to 'failed'
+  // via findByIdAndUpdate once sendJobDigestEmail rejected — the final
+  // persisted outcome (status 'failed', jobCount 0, a reason) is unchanged
+  // from before; only the mechanism (update vs a fresh create) differs.
+  expect(EmailLog.create).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u1', status: 'claimed' }));
+  expect(EmailLog.findByIdAndUpdate).toHaveBeenCalledWith('log-id', {
+    $set: expect.objectContaining({ status: 'failed', jobCount: 0, reason: 'smtp down' }),
+  });
 });
 
 test('0 eligible jobs: logs skipped, does NOT advance lastEmailedAt (user stays due next cycle)', async () => {
@@ -84,9 +96,13 @@ test('success path: marks emailed, advances lastEmailedAt, logs sent', async () 
 
   expect(UserJob.updateMany).toHaveBeenCalledWith({ _id: { $in: ['uj1'] } }, { emailed: true });
   expect(User.updateOne).toHaveBeenCalledWith({ _id: 'u1' }, { lastEmailedAt: expect.any(Date) });
-  expect(EmailLog.create).toHaveBeenCalledWith(
-    expect.objectContaining({ userId: 'u1', status: 'sent', jobCount: 1 })
-  );
+  // Claimed first (Improvement 11), then transitioned to 'sent' via
+  // findByIdAndUpdate once sendJobDigestEmail resolved — same final outcome
+  // (status 'sent', jobCount 1) as before, via the new claim mechanism.
+  expect(EmailLog.create).toHaveBeenCalledWith(expect.objectContaining({ userId: 'u1', status: 'claimed' }));
+  expect(EmailLog.findByIdAndUpdate).toHaveBeenCalledWith('log-id', {
+    $set: expect.objectContaining({ status: 'sent', jobCount: 1 }),
+  });
 });
 
 test('query still gates on the admin-configured threshold, emailed:false dedup, and a 10-job cap', async () => {

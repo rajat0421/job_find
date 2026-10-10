@@ -6,7 +6,14 @@
 jest.mock('node-cron', () => ({ schedule: jest.fn() }));
 jest.mock('../../models/User', () => ({ find: jest.fn(), updateOne: jest.fn() }));
 jest.mock('../../models/UserJob', () => ({ find: jest.fn(), countDocuments: jest.fn(), updateMany: jest.fn() }));
-jest.mock('../../models/EmailLog', () => ({ create: jest.fn() }));
+// create() resolves with an _id (simulates the claimDelivery() insert) so the
+// success/failure path's subsequent findByIdAndUpdate(claim.doc._id, ...) has
+// something to operate on — see Improvement 11's dailyEmail.job.js changes.
+jest.mock('../../models/EmailLog', () => ({
+  create: jest.fn().mockResolvedValue({ _id: 'log-id' }),
+  findByIdAndUpdate: jest.fn().mockResolvedValue({}),
+  findOne: jest.fn(),
+}));
 jest.mock('../../models/Config', () => ({ findOne: jest.fn() }));
 jest.mock('../../services/email.service', () => ({ sendJobDigestEmail: jest.fn(), sendAdminDigestCopy: jest.fn() }));
 jest.mock('../../services/config.service', () => ({ getEmailThreshold: jest.fn() }));

@@ -1,6 +1,7 @@
-const axios = require('axios');
 const crypto = require('crypto');
 const { observeJob, sweepMissingJobs } = require('../services/jobLifecycle.service');
+const { getWithRetry, classifyError } = require('../services/httpClient.service');
+const { createProviderDeadline } = require('../services/fetchBudget.service');
 
 // Public Lever Postings API — no auth needed. Companies are managed in the Company
 // collection (admin portal), with leverCompanies.json as a seed/fallback.
@@ -42,18 +43,49 @@ const buildDescription = (j) => {
 
 const baseUrl = (region) => (region === 'eu' ? 'https://api.eu.lever.co' : 'https://api.lever.co');
 
-const fetchJobs = async () => {
+// `cycleDeadline` (from fetchBudget.service.js, shared across all four
+// providers for one fetch run) is passed in by jobFetcher.service.js. This
+// adapter also tracks its own per-provider budget independently.
+const fetchJobs = async ({ cycleDeadline } = {}) => {
   let newCount = 0;
   let totalFetched = 0;
   const companies = await getCompanies('lever');
 
-  for (const { _id, name: company, token, region } of companies) {
+  const providerDeadline = createProviderDeadline();
+  const deadlines = [providerDeadline, cycleDeadline].filter(Boolean);
+
+  const stats = { requestsAttempted: 0, requestsFailed: 0, retries: 0 };
+  const companiesFailed = [];
+  const companiesSkipped = [];
+  let budgetExceeded = null;
+  let attemptedCount = 0;
+
+  for (let i = 0; i < companies.length; i++) {
+    const { _id, name: company, token, region } = companies[i];
+
+    // Checked BEFORE starting a new company's request — a company never
+    // reached here is never attempted, never counted as scanned, and never
+    // fed into sweepMissingJobs.
+    if (providerDeadline.expired()) budgetExceeded = 'provider';
+    else if (cycleDeadline?.expired()) budgetExceeded = 'cycle';
+    if (budgetExceeded) {
+      companiesSkipped.push(
+        ...companies.slice(i).map((c) => ({ name: c.name || c.token, reason: `${budgetExceeded}_budget_exceeded` }))
+      );
+      console.warn(`[Lever] ${budgetExceeded} time budget exceeded — skipping ${companies.length - i} remaining board(s) this cycle`);
+      break;
+    }
+
+    attemptedCount++;
     let fetched = 0;
+    stats.requestsAttempted++;
     try {
-      const res = await axios.get(`${baseUrl(region)}/v0/postings/${token}`, {
-        params: { mode: 'json' },
-        timeout: 10000,
-      });
+      const res = await getWithRetry(
+        `${baseUrl(region)}/v0/postings/${token}`,
+        { params: { mode: 'json' }, timeout: 10000 },
+        stats,
+        deadlines
+      );
 
       const jobs = Array.isArray(res.data) ? res.data : [];
       fetched = jobs.length;
@@ -100,13 +132,28 @@ const fetchJobs = async () => {
         await sweepMissingJobs({ source: 'lever', sourceBoard: token, observedSourceJobIds: observedIds });
       }
     } catch (err) {
-      // Token may be wrong, company left Lever, or on the EU instance — skip and continue
-      console.warn(`[Lever] Skipped ${company} (${token}): ${err.response?.status || err.message}`);
+      // Token may be wrong, company left Lever, or the request failed even
+      // after bounded retries — skip and continue. Reason is classified, not
+      // the raw error, so nothing sensitive lands in FetchRun or logs.
+      const reason = classifyError(err);
+      stats.requestsFailed++;
+      companiesFailed.push({ name: company || token, reason });
+      console.warn(`[Lever] Skipped ${company} (${token}): ${reason}`);
       if (_id) await Company.updateOne({ _id }, { lastFetchedAt: new Date(), lastJobCount: 0 });
     }
   }
 
-  return { added: newCount, fetched: totalFetched };
+  return {
+    added: newCount,
+    fetched: totalFetched,
+    companiesAttempted: attemptedCount,
+    companiesFailed,
+    companiesSkipped,
+    budgetExceeded,
+    requestsAttempted: stats.requestsAttempted,
+    requestsFailed: stats.requestsFailed,
+    retries: stats.retries,
+  };
 };
 
 module.exports = { fetchJobs, COMPANIES, stripHtml };

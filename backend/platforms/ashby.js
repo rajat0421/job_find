@@ -1,6 +1,7 @@
-const axios = require('axios');
 const crypto = require('crypto');
 const { observeJob, sweepMissingJobs } = require('../services/jobLifecycle.service');
+const { getWithRetry, classifyError } = require('../services/httpClient.service');
+const { createProviderDeadline } = require('../services/fetchBudget.service');
 
 // Public Ashby Job Posting API — no auth. Companies are managed in the Company
 // collection (admin portal), with ashbyBoards.json as a seed/fallback.
@@ -21,17 +22,49 @@ const normalizeWorkplace = (wt) => {
   return 'onsite';
 };
 
-const fetchJobs = async () => {
+// `cycleDeadline` (from fetchBudget.service.js, shared across all four
+// providers for one fetch run) is passed in by jobFetcher.service.js. This
+// adapter also tracks its own per-provider budget independently.
+const fetchJobs = async ({ cycleDeadline } = {}) => {
   let newCount = 0;
   let totalFetched = 0;
   const companies = await getCompanies('ashby');
 
-  for (const { _id, name: company, token: board } of companies) {
+  const providerDeadline = createProviderDeadline();
+  const deadlines = [providerDeadline, cycleDeadline].filter(Boolean);
+
+  const stats = { requestsAttempted: 0, requestsFailed: 0, retries: 0 };
+  const companiesFailed = [];
+  const companiesSkipped = [];
+  let budgetExceeded = null;
+  let attemptedCount = 0;
+
+  for (let i = 0; i < companies.length; i++) {
+    const { _id, name: company, token: board } = companies[i];
+
+    // Checked BEFORE starting a new company's request — a company never
+    // reached here is never attempted, never counted as scanned, and never
+    // fed into sweepMissingJobs.
+    if (providerDeadline.expired()) budgetExceeded = 'provider';
+    else if (cycleDeadline?.expired()) budgetExceeded = 'cycle';
+    if (budgetExceeded) {
+      companiesSkipped.push(
+        ...companies.slice(i).map((c) => ({ name: c.name || c.token, reason: `${budgetExceeded}_budget_exceeded` }))
+      );
+      console.warn(`[Ashby] ${budgetExceeded} time budget exceeded — skipping ${companies.length - i} remaining board(s) this cycle`);
+      break;
+    }
+
+    attemptedCount++;
     let fetched = 0;
+    stats.requestsAttempted++;
     try {
-      const res = await axios.get(`https://api.ashbyhq.com/posting-api/job-board/${board}`, {
-        timeout: 10000,
-      });
+      const res = await getWithRetry(
+        `https://api.ashbyhq.com/posting-api/job-board/${board}`,
+        { timeout: 10000 },
+        stats,
+        deadlines
+      );
 
       const jobs = res.data?.jobs || [];
       fetched = jobs.length;
@@ -78,12 +111,25 @@ const fetchJobs = async () => {
         await sweepMissingJobs({ source: 'ashby', sourceBoard: board, observedSourceJobIds: observedIds });
       }
     } catch (err) {
-      console.warn(`[Ashby] Skipped ${company} (${board}): ${err.response?.status || err.message}`);
+      const reason = classifyError(err);
+      stats.requestsFailed++;
+      companiesFailed.push({ name: company || board, reason });
+      console.warn(`[Ashby] Skipped ${company} (${board}): ${reason}`);
       if (_id) await Company.updateOne({ _id }, { lastFetchedAt: new Date(), lastJobCount: 0 });
     }
   }
 
-  return { added: newCount, fetched: totalFetched };
+  return {
+    added: newCount,
+    fetched: totalFetched,
+    companiesAttempted: attemptedCount,
+    companiesFailed,
+    companiesSkipped,
+    budgetExceeded,
+    requestsAttempted: stats.requestsAttempted,
+    requestsFailed: stats.requestsFailed,
+    retries: stats.retries,
+  };
 };
 
 module.exports = { fetchJobs, BOARDS };

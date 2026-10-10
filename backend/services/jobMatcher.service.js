@@ -330,6 +330,12 @@ const computeJobFingerprint = (job) => {
   return crypto.createHash('md5').update(payload).digest('hex');
 };
 
+// Returns a stats object describing what actually happened this run — see
+// Improvement 6 (production observability): matchJobs.job.js persists this
+// into a MatchRun document so "the cron tick started" is never confused with
+// "the cron tick succeeded". On failure, the partial stats accumulated so far
+// are attached to the thrown error as `err.matchStats` (rather than swallowed)
+// so the caller can still record what DID complete before the failure.
 const matchJobsForAllUsers = async () => {
   const users = await User.find({ isOnboarded: true, isEmailVerified: true });
 
@@ -347,24 +353,62 @@ const matchJobsForAllUsers = async () => {
 
   console.log(`[Matcher] ${recentJobs.length} recent jobs + ${pendingJobs.length} pending job(s) × ${users.length} users`);
 
-  let totalCreated = 0;
-  let totalUpdated = 0;
-  for (const user of users) {
-    const recentResult = await _matchJobsForUser(user, recentJobs, { updateExisting: false });
-    const pendingResult = await _matchJobsForUser(user, pendingJobs, { updateExisting: true });
-    totalCreated += recentResult.created + pendingResult.created;
-    totalUpdated += pendingResult.updated;
+  const stats = {
+    usersConsidered: users.length,
+    recentJobsConsidered: recentJobs.length,
+    pendingJobsConsidered: pendingJobs.length,
+    created: 0,
+    updated: 0,
+    errors: 0,
+    pendingMarkedProcessed: false,
+  };
+
+  try {
+    for (const user of users) {
+      const recentResult = await _matchJobsForUser(user, recentJobs, { updateExisting: false });
+      const pendingResult = await _matchJobsForUser(user, pendingJobs, { updateExisting: true });
+      stats.created += recentResult.created + pendingResult.created;
+      stats.updated += pendingResult.updated;
+      stats.errors += recentResult.insertErrors + recentResult.updateErrors
+        + pendingResult.insertErrors + pendingResult.updateErrors;
+    }
+
+    // Only mark pending jobs processed now that every onboarded user has been
+    // checked against them this tick. If the loop above threw, execution never
+    // reaches here, so these jobs stay needsMatching:true for the next cron tick.
+    if (pendingJobs.length) {
+      await Job.updateMany({ _id: { $in: pendingJobs.map((j) => j._id) } }, { $set: { needsMatching: false } });
+    }
+    stats.pendingMarkedProcessed = true;
+  } catch (err) {
+    err.matchStats = stats; // let the caller record partial progress even though this run failed
+    throw err;
   }
 
-  // Only mark pending jobs processed now that every onboarded user has been
-  // checked against them this tick. If the loop above threw, execution never
-  // reaches here, so these jobs stay needsMatching:true for the next cron tick.
-  if (pendingJobs.length) {
-    await Job.updateMany({ _id: { $in: pendingJobs.map((j) => j._id) } }, { $set: { needsMatching: false } });
-  }
-
-  console.log(`[Matcher] Done — ${totalCreated} new match(es) created, ${totalUpdated} stale match(es) refreshed`);
+  console.log(`[Matcher] Done — ${stats.created} new match(es) created, ${stats.updated} stale match(es) refreshed${stats.errors ? `, ${stats.errors} operation(s) had errors` : ''}`);
+  return stats;
 };
+
+// Bounded (index-covered by Job's {needsMatching,status,updatedAt} index)
+// snapshot of the pending-match backlog — how many jobs are waiting, and how
+// long the oldest one has been waiting. Used by monitoring.service.js; never
+// loads the jobs themselves, just a count and one id's timestamp.
+const getPendingMatchBacklog = async () => {
+  const pendingFilter = { ...ACTIVE_JOB_FILTER, ...PENDING_JOB_FILTER };
+  const [count, oldest] = await Promise.all([
+    Job.countDocuments(pendingFilter),
+    Job.findOne(pendingFilter).sort({ updatedAt: 1 }).select('updatedAt'),
+  ]);
+  return {
+    count,
+    oldestPendingAgeMs: oldest ? Date.now() - new Date(oldest.updatedAt).getTime() : null,
+  };
+};
+
+// Bounded (index-covered by UserJob's {matcherVersion} index) count of
+// UserJob records not yet brought up to MATCHER_VERSION by sweepStaleMatcherVersions.
+// A plain count, not the records themselves — safe to call on every dashboard load.
+const getMatcherVersionBacklog = () => UserJob.countDocuments({ matcherVersion: { $ne: MATCHER_VERSION } });
 
 const matchJobsForUser = async (userId) => {
   const user = await User.findById(userId);
@@ -454,7 +498,7 @@ const sweepStaleMatcherVersions = async () => {
 // existing pairs for staleness and refreshes them in place — this is what
 // propagates a job content change into an already-existing match.
 const _matchJobsForUser = async (user, jobs, { updateExisting = false } = {}) => {
-  if (!jobs.length) return { created: 0, updated: 0 };
+  if (!jobs.length) return { created: 0, updated: 0, insertErrors: 0, updateErrors: 0 };
 
   const existing = await UserJob.find({ userId: user._id, jobId: { $in: jobs.map((j) => j._id) } });
   const existingByJobId = new Map(existing.map((uj) => [uj.jobId.toString(), uj]));
@@ -500,10 +544,30 @@ const _matchJobsForUser = async (user, jobs, { updateExisting = false } = {}) =>
     });
   }
 
-  if (toInsert.length) await UserJob.insertMany(toInsert, { ordered: false }).catch(() => {});
-  if (ops.length) await UserJob.bulkWrite(ops).catch(() => {});
+  // Both writes are tolerant-but-visible: a failure here (most commonly a
+  // duplicate-key race on the unique {userId,jobId} index — e.g. two overlapping
+  // processes both matching the same pending job) must not abort the rest of
+  // this tick, since every other user/job pair here is independent. Previously
+  // these failures were swallowed entirely with no count or log line, making
+  // "matching errors and incomplete batches" (Improvement 6) invisible. Now
+  // they're counted and logged (sanitized — error message only) so the
+  // dashboard/MatchRun can surface a 'partial' outcome instead of a silent one.
+  let insertErrors = 0;
+  let updateErrors = 0;
+  if (toInsert.length) {
+    await UserJob.insertMany(toInsert, { ordered: false }).catch((err) => {
+      insertErrors += 1;
+      console.error(`[Matcher] insertMany failed for user ${user._id} (${toInsert.length} pair(s) attempted):`, err.message);
+    });
+  }
+  if (ops.length) {
+    await UserJob.bulkWrite(ops).catch((err) => {
+      updateErrors += 1;
+      console.error(`[Matcher] bulkWrite failed for user ${user._id} (${ops.length} pair(s) attempted):`, err.message);
+    });
+  }
 
-  return { created: toInsert.length, updated: ops.length };
+  return { created: toInsert.length, updated: ops.length, insertErrors, updateErrors };
 };
 
 const scoreJobWithBreakdown = (user, job) => {
@@ -608,6 +672,8 @@ module.exports = {
   matchJobsForUser,
   rescoreUserMatches,
   sweepStaleMatcherVersions,
+  getPendingMatchBacklog,
+  getMatcherVersionBacklog,
   scoreJob,
   scoreJobDetailed,
   scoreJobWithBreakdown,

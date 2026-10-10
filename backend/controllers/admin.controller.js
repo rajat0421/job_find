@@ -10,6 +10,7 @@ const Company = require('../models/Company');
 const { scoreJob, scoreJobDetailed, scoreJobWithBreakdown, matchJobsForAllUsers, computeUserFingerprint, computeJobFingerprint, MATCHER_VERSION } = require('../services/jobMatcher.service');
 const { getCompanies } = require('../services/companies.service');
 const { getEmailThreshold } = require('../services/config.service');
+const { getOperationalOverview, getFetchHealth, getMatchHealth, getEmailHealth } = require('../services/monitoring.service');
 
 const generateJobHash = (title, company, location) =>
   crypto.createHash('md5').update(`${title}-${company}-${location}`).digest('hex');
@@ -640,6 +641,17 @@ const getAnalytics = async (_req, res) => {
       FetchRun.find().sort({ createdAt: -1 }).limit(10).lean(),
     ]);
 
+    // Operational overview (Improvement 6) — fetch/match/email/job-freshness
+    // health, each a handful of bounded, index-covered queries. Isolated in
+    // its own try/catch so a monitoring regression never breaks the rest of
+    // this already-working analytics endpoint.
+    let ops = null;
+    try {
+      ops = await getOperationalOverview();
+    } catch (err) {
+      console.error('[Analytics] Operational overview failed:', err.message);
+    }
+
     // Users with at least one sendable job (>= threshold, not yet emailed)
     const threshold = await getEmailThreshold();
     const usersWithSendable = (await UserJob.aggregate([
@@ -670,6 +682,7 @@ const getAnalytics = async (_req, res) => {
         yesterday: fetchYesterday[0] || { fetched: 0, added: 0, runs: 0 },
         recentRuns,
       },
+      ops, // null only if the overview itself errored — never falsely reported as healthy
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
@@ -870,4 +883,51 @@ const sendDigestForUser = async (req, res) => {
   }
 };
 
-module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, getConfig, updateConfig, fixGreenhouseDescriptions, rescoreAllUsers, backfillMatches, getLogs, getEmailLogs, getJobBreakdown, sendDigestForUser, getUpcomingEmails, listCompanies, createCompany, updateCompany, deleteCompany, getJobs, getAnalytics };
+// GET /api/admin/diagnostics — Section 6's readiness/diagnostic endpoint.
+// Deliberately separate from the lightweight public /api/health (which stays
+// untouched, dependency-free, for Render's uptime check): this one is
+// admin-authenticated and distinguishes four independent things that a
+// single "up" boolean can't: the process is alive (trivial — we're
+// responding), Mongo is actually connected, the scheduler is registered IN
+// THIS PROCESS (role-aware — never claims a scheduler exists in an 'api'-only
+// process), and recent scheduled work has actually completed (from
+// monitoring.service, the same source the analytics dashboard uses) —
+// registration alone never implies successful execution.
+const getDiagnostics = async (_req, res) => {
+  try {
+    const mongoose = require('mongoose');
+    const { getProcessRole } = require('../config/processRole');
+    const { isSchedulerStarted } = require('../jobs/scheduler');
+
+    const role = getProcessRole();
+    const schedulerExpectedInThisProcess = role === 'all' || role === 'worker';
+    const httpApiExpectedInThisProcess = role === 'all' || role === 'api';
+
+    const [fetch, match, email] = await Promise.all([
+      getFetchHealth().catch((err) => ({ status: 'unknown', error: err.message })),
+      getMatchHealth().catch((err) => ({ status: 'unknown', error: err.message })),
+      getEmailHealth().catch((err) => ({ status: 'unknown', error: err.message })),
+    ]);
+
+    res.json({
+      processAlive: true,
+      processRole: role,
+      httpApiExpectedInThisProcess,
+      mongoConnected: mongoose.connection.readyState === 1,
+      schedulerExpectedInThisProcess,
+      // Only meaningful when schedulerExpectedInThisProcess is true — a
+      // worker-less 'api' process never registers one, and that's correct,
+      // not a failure.
+      schedulerRegistered: schedulerExpectedInThisProcess ? isSchedulerStarted() : false,
+      recentWork: {
+        fetch: { status: fetch.status, lastRunAt: fetch.lastRunAt || null },
+        match: { status: match.status, lastRunAt: match.lastRunAt || null },
+        email: { lastSuccessAt: email.lastSuccessAt || null },
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+module.exports = { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, getConfig, updateConfig, fixGreenhouseDescriptions, rescoreAllUsers, backfillMatches, getLogs, getEmailLogs, getJobBreakdown, sendDigestForUser, getUpcomingEmails, listCompanies, createCompany, updateCompany, deleteCompany, getJobs, getAnalytics, getDiagnostics };

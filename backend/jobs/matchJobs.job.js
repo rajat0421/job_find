@@ -1,10 +1,25 @@
 const cron = require('node-cron');
+const { randomUUID } = require('crypto');
 const { matchJobsForAllUsers, sweepStaleMatcherVersions } = require('../services/jobMatcher.service');
 const { expireStaleJobs } = require('../services/jobLifecycle.service');
+const MatchRun = require('../models/MatchRun');
 
 let registered = false;
 let task = null;
 let running = false;
+
+// Persists what actually happened this tick (Improvement 6: production
+// observability) — a run that merely STARTED was previously indistinguishable
+// from one that fully succeeded, since matchJobsForAllUsers() returned
+// nothing. Never throws itself: a failure to WRITE the MatchRun record must
+// never crash or re-run the matching pipeline that already happened.
+const recordMatchRun = async (fields) => {
+  try {
+    await MatchRun.create(fields);
+  } catch (err) {
+    console.error('[Cron] Failed to record MatchRun:', err.message);
+  }
+};
 
 const runMatchTick = async () => {
   if (running) {
@@ -12,19 +27,50 @@ const runMatchTick = async () => {
     return;
   }
   running = true;
+  const runId = randomUUID();
+  const startedAt = new Date();
+  let expiredCount = 0;
+  let versionRescored = 0;
+  let stats = null;
+  let outcome = 'success';
+  const errorSummary = [];
   try {
-    console.log('[Cron] Matching jobs...');
+    console.log(`[Cron] [match:${runId}] Matching jobs...`);
     // Age-based expiry sweep runs first so matching never scores a stale posting
     // this cycle. Cheap (one indexed bulk update); never deletes anything.
-    const expiredCount = await expireStaleJobs();
-    if (expiredCount > 0) console.log(`[Cron] Expired ${expiredCount} stale job(s)`);
-    await matchJobsForAllUsers();
+    expiredCount = await expireStaleJobs();
+    if (expiredCount > 0) console.log(`[Cron] [match:${runId}] Expired ${expiredCount} stale job(s)`);
+    stats = await matchJobsForAllUsers();
+    if ((stats?.errors || 0) > 0) outcome = 'partial'; // completed, but some writes failed — see jobMatcher.service.js
     // Bounded, resumable — only advances a fixed batch of matcherVersion-stale
     // UserJob records per tick (see jobMatcher.service.js). A no-op once
     // everything's current; only does real work right after a version bump.
-    const versionRescored = await sweepStaleMatcherVersions();
-    if (versionRescored > 0) console.log(`[Cron] Rescored ${versionRescored} record(s) to the current matcher version`);
+    versionRescored = await sweepStaleMatcherVersions();
+    if (versionRescored > 0) console.log(`[Cron] [match:${runId}] Rescored ${versionRescored} record(s) to the current matcher version`);
+    console.log(`[Cron] [match:${runId}] Done (${outcome})`);
+  } catch (err) {
+    outcome = 'failed';
+    stats = err.matchStats || stats; // partial progress, if any, attached by matchJobsForAllUsers before it threw
+    errorSummary.push(err.message);
+    console.error(`[Cron] [match:${runId}] Match tick failed:`, err.message);
   } finally {
+    const finishedAt = new Date();
+    await recordMatchRun({
+      startedAt,
+      finishedAt,
+      durationMs: finishedAt - startedAt,
+      outcome,
+      usersConsidered: stats?.usersConsidered || 0,
+      recentJobsConsidered: stats?.recentJobsConsidered || 0,
+      pendingJobsConsidered: stats?.pendingJobsConsidered || 0,
+      created: stats?.created || 0,
+      updated: stats?.updated || 0,
+      errorCount: stats?.errors || 0,
+      pendingMarkedProcessed: stats?.pendingMarkedProcessed || false,
+      versionRescored,
+      expiredCount,
+      errorSummary,
+    });
     running = false;
   }
 };

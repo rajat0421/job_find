@@ -13,6 +13,7 @@ jest.mock('../../services/jobMatcher.service', () => ({
 jest.mock('../../services/jobLifecycle.service', () => ({
   expireStaleJobs: jest.fn().mockResolvedValue(0),
 }));
+jest.mock('../../models/MatchRun', () => ({ create: jest.fn().mockResolvedValue({}) }));
 
 const cron = require('node-cron');
 const { fetchAdzunaJobs } = require('../../services/jobFetcher.service');

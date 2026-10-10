@@ -47,16 +47,90 @@ export default function AdminAnalytics() {
   if (loading) return <div className="min-h-screen bg-[#0a0a12]">{bar()}<div className="text-center pt-24 text-slate-600">Loading…</div></div>;
   if (!data) return <div className="min-h-screen bg-[#0a0a12]">{bar()}<div className="text-center pt-24 text-slate-600">Failed to load</div></div>;
 
-  const { jobs, matches, companies, emails, users, fetch } = data;
+  const { jobs, matches, companies, emails, users, fetch, ops } = data;
   const em = (m) => `${m.sent || 0} sent · ${m.skipped || 0} skipped · ${m.failed || 0} failed`;
   const dist = matches.distribution;
   const distTotal = (dist.below40 + dist.mid + dist.good + dist.strong) || 1;
   const pct = (n) => `${Math.round((n / distTotal) * 100)}%`;
 
+  const INDICATOR_STYLE = {
+    ok:      { dot: 'bg-green-400',  text: 'text-green-400',  label: 'Healthy' },
+    warning: { dot: 'bg-yellow-400', text: 'text-yellow-400', label: 'Warning' },
+    error:   { dot: 'bg-red-500',    text: 'text-red-400',    label: 'Error' },
+  };
+  const indicatorStyle = (i) => INDICATOR_STYLE[i] || { dot: 'bg-slate-500', text: 'text-slate-500', label: 'Unknown' };
+
+  const relativeAge = (iso) => {
+    if (!iso) return 'never';
+    const ms = Date.now() - new Date(iso).getTime();
+    const mins = Math.round(ms / 60000);
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.round(mins / 60);
+    if (hours < 48) return `${hours}h ago`;
+    return `${Math.round(hours / 24)}d ago`;
+  };
+
+  const OpsCard = ({ label, indicator, status, lastAt, children }) => {
+    const style = indicatorStyle(indicator);
+    return (
+      <div className="bg-[#12121c] border border-white/10 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs text-slate-500 font-medium uppercase tracking-wide">{label}</p>
+          <span className={`flex items-center gap-1.5 text-xs font-medium ${style.text}`}>
+            <span className={`w-2 h-2 rounded-full ${style.dot}`} />
+            {style.label}
+          </span>
+        </div>
+        <p className="text-lg font-bold text-slate-100 capitalize">{status || 'unknown'}</p>
+        <p className="text-xs text-slate-600 mt-1">{lastAt ? `Last: ${relativeAge(lastAt)}` : 'No runs recorded yet'}</p>
+        {children}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-[#0a0a12]">
       {bar()}
       <div className="max-w-6xl mx-auto px-6 py-8 space-y-8">
+
+        {/* Operational overview */}
+        {ops && (
+          <section>
+            <h2 className="text-sm font-semibold text-slate-300 mb-3">Operational overview</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
+              <OpsCard label="Fetch" indicator={ops.fetch.indicator} status={ops.fetch.status} lastAt={ops.fetch.lastRunAt}>
+                <p className="text-xs text-slate-500 mt-2">{ops.fetch.totalAdded ?? 0} added this run</p>
+              </OpsCard>
+              <OpsCard label="Matching" indicator={ops.match.indicator} status={ops.match.status} lastAt={ops.match.lastRunAt}>
+                <p className="text-xs text-slate-500 mt-2">{ops.jobs.needsMatching} job(s) pending · {ops.jobs.matcherVersionBacklog} on old version</p>
+              </OpsCard>
+              <OpsCard label="Email" indicator={ops.email.indicator} status={ops.email.status} lastAt={ops.email.lastSuccessAt}>
+                <p className="text-xs text-slate-500 mt-2">{em(ops.email.last24h)} (24h)</p>
+              </OpsCard>
+              <OpsCard label="Jobs" indicator="ok" status={`${ops.jobs.active} active`} lastAt={null}>
+                <p className="text-xs text-slate-500 mt-2">{ops.jobs.closed} closed · {ops.jobs.expired} expired</p>
+              </OpsCard>
+            </div>
+            {ops.warnings.length > 0 && (
+              <div className="bg-[#12121c] border border-yellow-500/20 rounded-xl p-4 space-y-1.5">
+                <p className="text-xs text-yellow-400 font-medium uppercase tracking-wide mb-2">Warnings</p>
+                {ops.warnings.map((w, i) => (
+                  <p key={i} className="text-xs text-slate-400">• {w.message}</p>
+                ))}
+              </div>
+            )}
+            {(ops.fetch.failingBoards?.length > 0) && (
+              <div className="bg-[#12121c] border border-white/10 rounded-xl p-4 mt-4">
+                <p className="text-xs text-slate-500 font-medium uppercase tracking-wide mb-2">Boards failing repeatedly</p>
+                {ops.fetch.failingBoards.map((b) => (
+                  <p key={b.name} className="text-xs text-slate-400">
+                    {b.name} — {b.consecutiveFailures} run(s) in a row{b.lastReason ? ` (${b.lastReason})` : ''}
+                  </p>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
 
         {/* Jobs */}
         <section>

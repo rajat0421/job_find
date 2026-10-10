@@ -11,6 +11,12 @@ const stopAll = () => {
 
 const isBusy = () => isFetchRunning() || isMatchRunning() || isEmailRunning();
 
+// Exposed for admin diagnostics (Improvement 6) — "registered" only proves
+// startSchedulers() ran in this process, not that any tick has executed
+// successfully. Pair with actual FetchRun/MatchRun/EmailLog timestamps
+// (see services/monitoring.service.js) for proof of real execution.
+const isSchedulerStarted = () => started;
+
 // Registers all three background pipelines (fetch :00, match :15, email :20)
 // for this process. Each individual job file already guards against being
 // registered twice, but this flag makes the "schedulers start exactly once
@@ -29,4 +35,4 @@ const startSchedulers = () => {
   return { stopAll, isBusy };
 };
 
-module.exports = { startSchedulers };
+module.exports = { startSchedulers, isSchedulerStarted };

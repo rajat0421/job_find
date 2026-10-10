@@ -45,6 +45,7 @@ describe('match cron', () => {
   test('registering twice in the same process only calls cron.schedule once', () => {
     jest.doMock('../../services/jobMatcher.service', () => ({ matchJobsForAllUsers: jest.fn().mockResolvedValue(), sweepStaleMatcherVersions: jest.fn().mockResolvedValue(0) }));
     jest.doMock('../../services/jobLifecycle.service', () => ({ expireStaleJobs: jest.fn().mockResolvedValue(0) }));
+    jest.doMock('../../models/MatchRun', () => ({ create: jest.fn().mockResolvedValue({}) }));
     const cron = require('node-cron');
     const { startMatchJobsCron } = require('../matchJobs.job');
 
@@ -59,6 +60,7 @@ describe('match cron', () => {
     const matchJobsForAllUsers = jest.fn(() => new Promise((resolve) => { resolveMatch = resolve; }));
     jest.doMock('../../services/jobMatcher.service', () => ({ matchJobsForAllUsers, sweepStaleMatcherVersions: jest.fn().mockResolvedValue(0) }));
     jest.doMock('../../services/jobLifecycle.service', () => ({ expireStaleJobs: jest.fn().mockResolvedValue(0) }));
+    jest.doMock('../../models/MatchRun', () => ({ create: jest.fn().mockResolvedValue({}) }));
     const cron = require('node-cron');
     const { startMatchJobsCron } = require('../matchJobs.job');
 

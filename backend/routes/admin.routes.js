@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { isAdmin } = require('../middleware/admin.middleware');
-const { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, getConfig, updateConfig, fixGreenhouseDescriptions, rescoreAllUsers, backfillMatches, getLogs, getEmailLogs, getJobBreakdown, sendDigestForUser, getUpcomingEmails, listCompanies, createCompany, updateCompany, deleteCompany, getJobs, getAnalytics } = require('../controllers/admin.controller');
+const { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, getConfig, updateConfig, fixGreenhouseDescriptions, rescoreAllUsers, backfillMatches, getLogs, getEmailLogs, getJobBreakdown, sendDigestForUser, getUpcomingEmails, listCompanies, createCompany, updateCompany, deleteCompany, getJobs, getAnalytics, getDiagnostics } = require('../controllers/admin.controller');
 const { adminGetFeedback, approveFeedback, declineFeedback, deleteFeedback } = require('../controllers/feedback.controller');
 
 router.use(isAdmin);
@@ -24,6 +24,7 @@ router.get('/config', getConfig);
 router.patch('/config', updateConfig);
 router.get('/jobs', getJobs);
 router.get('/analytics', getAnalytics);
+router.get('/diagnostics', getDiagnostics);
 router.get('/companies', listCompanies);
 router.post('/companies', createCompany);
 router.patch('/companies/:id', updateCompany);

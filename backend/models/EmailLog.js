@@ -10,4 +10,10 @@ const emailLogSchema = new mongoose.Schema({
   reason:   { type: String, default: '' },
 });
 
+// Powers the admin analytics time-windowed aggregations (last 24h/7d, by
+// status) added in Improvement 6 — without this, those $match-on-sentAt
+// queries would collection-scan as EmailLog grows. Also serves the existing
+// admin email-logs listing's default sort.
+emailLogSchema.index({ sentAt: -1 });
+
 module.exports = mongoose.model('EmailLog', emailLogSchema);

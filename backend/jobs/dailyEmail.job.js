@@ -118,7 +118,17 @@ const sendDigest = async ({ force = false } = {}) => {
       continue;
     }
 
-    const jobsPayload = newJobs.map((uj) => ({ job: uj.jobId, score: uj.score }));
+    // matchedSkills/matchedRole/reasons are included so the digest email
+    // (Improvement 7) can explain WHY each job matched using data the matcher
+    // already computed — no new scoring/explanation logic, no change to which
+    // records are selected or how they're ordered/capped above.
+    const jobsPayload = newJobs.map((uj) => ({
+      job: uj.jobId,
+      score: uj.score,
+      matchedSkills: uj.matchedSkills,
+      matchedRole: uj.matchedRole,
+      reasons: uj.reasons,
+    }));
     const sentAt = new Date();
 
     try {

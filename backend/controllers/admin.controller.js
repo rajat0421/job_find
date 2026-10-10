@@ -863,7 +863,7 @@ const sendDigestForUser = async (req, res) => {
 
     if (!newJobs.length) return res.status(400).json({ message: `No unread jobs with score ≥ ${threshold} for this user` });
 
-    const jobsPayload = newJobs.map((uj) => ({ job: uj.jobId, score: uj.score }));
+    const jobsPayload = newJobs.map((uj) => ({ job: uj.jobId, score: uj.score, matchedSkills: uj.matchedSkills, matchedRole: uj.matchedRole, reasons: uj.reasons }));
     const sentAt = new Date();
 
     await sendJobDigestEmail(user.email, user.name || 'there', jobsPayload);

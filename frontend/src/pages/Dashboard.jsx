@@ -3,6 +3,10 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import api from '../services/api';
+import {
+  IconMail, IconClock, IconGrid, IconCheckCircle, IconPause,
+  IconPencil, IconSparkle, IconUserCircle, IconArrowRight, IconPin,
+} from '../components/icons';
 
 const ADMIN_EMAIL = 'rajattalekar5143@gmail.com';
 
@@ -12,17 +16,29 @@ const SCHEDULE_TIERS = [
   { key: 1,  label: 'Every hour',   sublabel: '24× per day',   premium: true  },
 ];
 
-const StatCard = ({ label, value, highlight }) => (
-  <div className="bg-[#12121c] border border-white/10 rounded-xl p-4">
-    <p className="text-[11px] text-slate-500 uppercase tracking-widest mb-2">{label}</p>
-    <p className={`text-sm font-semibold ${highlight ? 'text-emerald-400' : 'text-white'}`}>{value}</p>
+// Focus ring used on every interactive element for visible keyboard
+// navigation, consistent with the dark theme.
+const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a12]';
+
+const StatCard = ({ icon: Icon, label, value, sub, highlight }) => (
+  <div className="bg-[#12121c] border border-white/10 rounded-xl p-4 flex flex-col gap-2 min-h-[94px]">
+    <div className="flex items-center gap-1.5 text-slate-500">
+      <Icon className="w-3.5 h-3.5 shrink-0" />
+      <span className="text-[11px] font-medium truncate">{label}</span>
+    </div>
+    <p className={`text-sm font-semibold leading-snug ${highlight ? 'text-emerald-400' : 'text-white'}`}>{value}</p>
+    {sub && <p className="text-[11px] text-slate-600">{sub}</p>}
   </div>
 );
 
 const ScheduleSection = ({ currentInterval }) => (
   <div className="bg-[#12121c] border border-white/10 rounded-2xl p-6 mb-4">
-    <p className="text-[11px] text-slate-500 uppercase tracking-widest mb-5">How often we email you</p>
-    <div className="grid grid-cols-3 gap-3">
+    <div className="flex items-center justify-between mb-5">
+      <p className="text-sm font-semibold text-white">Email frequency</p>
+      <span className="text-xs text-slate-600 hidden sm:block">How often we send your matches</span>
+    </div>
+
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
       {SCHEDULE_TIERS.map((tier) => {
         const isActive = currentInterval === tier.key;
         return (
@@ -35,214 +51,59 @@ const ScheduleSection = ({ currentInterval }) => (
             }`}
           >
             {isActive && (
-              <span className="absolute top-2.5 right-2.5 text-[9px] bg-violet-600 text-white px-1.5 py-0.5 rounded-full font-semibold tracking-wide uppercase">
-                Active
+              <span className="absolute top-3 right-3 inline-flex items-center gap-1 text-[10px] bg-violet-600 text-white px-2 py-0.5 rounded-full font-semibold">
+                <IconCheckCircle className="w-3 h-3" /> Active
               </span>
             )}
             {tier.premium && !isActive && (
-              <span className="absolute top-2.5 right-2.5 text-[9px] bg-amber-500/15 text-amber-400 border border-amber-500/25 px-1.5 py-0.5 rounded-full font-semibold tracking-wide uppercase">
-                Premium
+              <span className="absolute top-3 right-3 inline-flex items-center gap-1 text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/25 px-2 py-0.5 rounded-full font-semibold">
+                <IconSparkle className="w-3 h-3" /> Premium
               </span>
             )}
-            <p className="text-white text-sm font-semibold mb-0.5 mt-0.5">{tier.label}</p>
-            <p className="text-slate-500 text-xs mb-3">{tier.sublabel}</p>
+            <p className="text-white text-sm font-semibold mb-0.5 mt-0.5 pr-14">{tier.label}</p>
+            <p className="text-slate-500 text-xs mb-4">{tier.sublabel}</p>
             {tier.premium ? (
               <a
                 href={`mailto:${ADMIN_EMAIL}?subject=JobFind%20Premium%20—%20${encodeURIComponent(tier.label)}%20emails&body=Hi%2C%20I'd%20like%20to%20get%20job%20alerts%20${encodeURIComponent(tier.label)}%20on%20JobFind.`}
-                className="text-[11px] text-violet-400 hover:text-violet-300 font-medium transition-colors"
+                className={`inline-flex items-center gap-1 text-xs font-medium text-violet-400 hover:text-violet-300 transition-colors rounded ${FOCUS_RING}`}
               >
-                Contact admin →
+                Contact us <IconArrowRight className="w-3.5 h-3.5" />
               </a>
             ) : (
-              <span className="text-[11px] text-emerald-500 font-medium">Free</span>
+              <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-500">
+                <IconCheckCircle className="w-3.5 h-3.5" /> Included free
+              </span>
             )}
           </div>
         );
       })}
     </div>
-    <p className="text-[13px] text-slate-600 mt-5 text-center">
-      😅 Broke but want hourly alerts?{' '}
+
+    <div className="mt-5 pt-5 border-t border-white/[0.06] flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <p className="text-xs text-slate-500 leading-relaxed">
+        Want more frequent job alerts? Contact us to explore premium options.
+      </p>
       <a
-        href={`mailto:${ADMIN_EMAIL}?subject=Free%20Premium%20Please%20🙏`}
-        className="text-violet-500 hover:text-violet-400 transition-colors"
+        href={`mailto:${ADMIN_EMAIL}?subject=JobFind%20Premium%20inquiry&body=Hi%2C%20I'm%20interested%20in%20faster%20email%20alerts%20on%20JobFind.`}
+        className={`shrink-0 inline-flex items-center justify-center gap-1.5 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 px-3.5 py-2 rounded-lg transition-colors ${FOCUS_RING}`}
       >
-        Text Rajat
+        Contact us
       </a>
-      . He'll say "let me think about it" and then probably just do it.
-    </p>
+    </div>
   </div>
 );
 
-const timeAgo = (date) => {
-  const secs = Math.floor((Date.now() - new Date(date)) / 1000);
-  if (secs < 60) return 'just now';
-  if (secs < 3600) return `${Math.floor(secs / 60)}m ago`;
-  if (secs < 86400) return `${Math.floor(secs / 3600)}h ago`;
-  if (secs < 604800) return `${Math.floor(secs / 86400)}d ago`;
-  return new Date(date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-};
-
-const FeedbackCard = ({ fb, currentUserId }) => {
-  const [likes, setLikes] = useState(fb.likes || []);
-  const [dislikes, setDislikes] = useState(fb.dislikes || []);
-  const [acting, setActing] = useState(false);
-
-  const liked    = currentUserId && likes.some(id => id.toString() === currentUserId);
-  const disliked = currentUserId && dislikes.some(id => id.toString() === currentUserId);
-
-  const handleLike = async () => {
-    if (acting) return;
-    setActing(true);
-    try {
-      const r = await api.post(`/feedback/${fb._id}/like`);
-      setLikes(r.data.likes);
-      setDislikes(r.data.dislikes);
-    } catch {}
-    finally { setActing(false); }
-  };
-
-  const handleDislike = async () => {
-    if (acting) return;
-    setActing(true);
-    try {
-      const r = await api.post(`/feedback/${fb._id}/dislike`);
-      setLikes(r.data.likes);
-      setDislikes(r.data.dislikes);
-    } catch {}
-    finally { setActing(false); }
-  };
-
-  return (
-    <div className="border border-white/[0.07] rounded-xl p-4">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-xs font-medium text-slate-400">
-          {fb.name?.split(' ')[0] || 'Anonymous'}
-        </span>
-        <span className="text-[11px] text-slate-700">{timeAgo(fb.timestamp)}</span>
-      </div>
-
-      <p className="text-sm text-slate-300 leading-relaxed">{fb.message}</p>
-
-      <div className="flex items-center gap-4 mt-3">
-        <button
-          onClick={handleLike}
-          disabled={acting}
-          className={`flex items-center gap-1.5 text-xs transition-colors disabled:opacity-50 ${
-            liked ? 'text-violet-400' : 'text-slate-600 hover:text-slate-400'
-          }`}
-        >
-          <span>👍</span>
-          {likes.length > 0 && <span>{likes.length}</span>}
-        </button>
-        <button
-          onClick={handleDislike}
-          disabled={acting}
-          className={`flex items-center gap-1.5 text-xs transition-colors disabled:opacity-50 ${
-            disliked ? 'text-red-400' : 'text-slate-600 hover:text-slate-400'
-          }`}
-        >
-          <span>👎</span>
-          {dislikes.length > 0 && <span>{dislikes.length}</span>}
-        </button>
-      </div>
-    </div>
-  );
-};
-
-const FEEDBACK_PAGE = 6;
-
-const FeedbackSection = ({ currentUserId }) => {
-  const [message, setMessage] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
-  const [feedbacks, setFeedbacks] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [visible, setVisible] = useState(FEEDBACK_PAGE);
-
-  useEffect(() => {
-    api.get('/feedback')
-      .then(r => setFeedbacks(r.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!message.trim()) return;
-    setSubmitting(true);
-    setError('');
-    try {
-      await api.post('/feedback', { message: message.trim() });
-      setMessage('');
-      setSubmitted(true);
-      setTimeout(() => setSubmitted(false), 5000);
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to send feedback');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="bg-[#12121c] border border-white/10 rounded-2xl p-6 mb-4">
-      <p className="text-[11px] text-slate-500 uppercase tracking-widest mb-1">Feedback</p>
-      <p className="text-xs text-slate-600 mb-5">Your feedback helps us improve JobFind for everyone.</p>
-
-      {/* Submit form */}
-      <form onSubmit={handleSubmit} className="mb-6">
-        <textarea
-          value={message}
-          onChange={(e) => setMessage(e.target.value)}
-          placeholder="What's working? What should we improve? Anything you'd like to see?"
-          maxLength={500}
-          rows={3}
-          className="w-full bg-[#1a1a28] border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition resize-none"
-        />
-        <div className="flex items-center justify-between mt-2">
-          <span className="text-xs text-slate-700">{message.length}/500</span>
-          <button
-            type="submit"
-            disabled={submitting || !message.trim()}
-            className="bg-violet-600 hover:bg-violet-700 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
-          >
-            {submitting ? 'Sending...' : 'Send feedback'}
-          </button>
-        </div>
-        {submitted && <p className="text-xs text-emerald-400 mt-2">Thanks! Your feedback is pending review and will appear here once approved.</p>}
-        {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
-      </form>
-
-      {/* Feedback list */}
-      <div>
-        <p className="text-[11px] text-slate-500 uppercase tracking-widest mb-3">What users are saying</p>
-        {loading ? (
-          <p className="text-sm text-slate-700 py-4">Loading...</p>
-        ) : feedbacks.length === 0 ? (
-          <p className="text-sm text-slate-700 text-center py-6">No feedback yet. Be the first to share!</p>
-        ) : (
-          <>
-            <div className="columns-2 gap-3">
-              {feedbacks.slice(0, visible).map((fb) => (
-                <div key={fb._id} className="break-inside-avoid mb-3">
-                  <FeedbackCard fb={fb} currentUserId={currentUserId} />
-                </div>
-              ))}
-            </div>
-            {visible < feedbacks.length && (
-              <button
-                onClick={() => setVisible(v => v + FEEDBACK_PAGE)}
-                className="w-full mt-1 text-xs text-slate-600 hover:text-slate-400 py-2 transition-colors"
-              >
-                Show more ({feedbacks.length - visible} remaining)
-              </button>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-};
+// Calculated from real profile fields (the exact ones JobFind's matcher
+// actually reads) — never a fabricated or hardcoded number.
+const COMPLETENESS_CHECKS = [
+  (p) => p.skills?.length > 0,
+  (p) => p.desiredRoles?.length > 0,
+  (p) => p.experience != null,
+  (p) => p.locations?.length > 0,
+  (p) => p.salary > 0,
+];
+const profileCompleteness = (p) => Math.round((COMPLETENESS_CHECKS.filter((check) => check(p)).length / COMPLETENESS_CHECKS.length) * 100);
+const hasAnyProfileData = (p) => COMPLETENESS_CHECKS.some((check) => check(p));
 
 const Dashboard = () => {
   const { user } = useAuth();
@@ -276,34 +137,46 @@ const Dashboard = () => {
   const paused = profile?.emailPaused;
 
   return (
-    <div className="min-h-screen bg-[#0a0a12]">
+    <div className="min-h-screen bg-[#0a0a12] overflow-x-hidden">
       <Navbar />
 
-      <div className="max-w-2xl mx-auto px-4 py-14">
+      <div className="max-w-2xl mx-auto px-4 py-10 sm:py-14">
 
         {/* Hero */}
-        <div className="mb-10">
-          <p className="text-xs text-violet-400 font-semibold uppercase tracking-widest mb-3">JobFind</p>
-          <h1 className="text-3xl font-bold text-white mb-3 leading-tight">
-            Hi {user?.name || 'there'}<br />
-            <span className="text-slate-400 font-normal text-2xl">
-              {paused ? 'job emails are paused.' : 'we\'re finding jobs for you.'}
-            </span>
+        <div className="mb-8">
+          <p className="text-sm text-slate-500 mb-2">Hi {user?.name || 'there'} 👋</p>
+          <h1 className="text-[26px] sm:text-3xl font-bold text-white leading-tight tracking-tight mb-3">
+            Your next opportunity, delivered.
           </h1>
-          <p className="text-slate-500 text-sm">
-            {paused ? (
-              <>Emails to <span className="text-slate-300 font-medium">{user?.email}</span> are off.</>
-            ) : (
-              <>Job matches are emailed to <span className="text-slate-300 font-medium">{user?.email}</span></>
-            )}
+          <p className="text-slate-400 text-sm sm:text-[15px] leading-relaxed max-w-md mb-5">
+            Personalized job matches based on your skills, experience, and preferences — delivered straight to your inbox.
           </p>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`inline-flex items-center gap-1.5 text-xs font-medium pl-2 pr-2.5 py-1 rounded-full border ${
+              paused ? 'bg-slate-500/10 text-slate-400 border-slate-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${paused ? 'bg-slate-500' : 'bg-emerald-400'}`} />
+              {paused ? 'Recommendations paused' : 'Recommendations active'}
+            </span>
+            {!paused && profile && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-white/5 text-slate-400 border border-white/10">
+                <IconClock className="w-3.5 h-3.5" /> {getScheduleText()}
+              </span>
+            )}
+            {profile && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-white/5 text-slate-400 border border-white/10">
+                <IconUserCircle className="w-3.5 h-3.5" /> Profile {profileCompleteness(profile)}% complete
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-3 mb-6">
-          <StatCard label="Status" value={paused ? 'Paused' : 'Active'} highlight={!paused} />
-          <StatCard label="Emails" value={paused ? 'Off' : getScheduleText()} />
-          <StatCard label="Sources" value="90+ companies" />
+          <StatCard icon={paused ? IconPause : IconCheckCircle} label="Status" value={paused ? 'Paused' : 'Active'} highlight={!paused} />
+          <StatCard icon={IconMail} label="Delivery" value={paused ? 'Off' : getScheduleText()} />
+          <StatCard icon={IconGrid} label="Coverage" value="90+ sources" sub="boards monitored" />
         </div>
 
         {/* Schedule upgrade */}
@@ -311,20 +184,20 @@ const Dashboard = () => {
           <ScheduleSection currentInterval={profile.emailIntervalHours ?? 24} />
         )}
 
-        {/* How it works */}
-        <div className="bg-[#12121c] border border-white/10 rounded-2xl p-6 mb-4">
-          <p className="text-[11px] text-slate-500 uppercase tracking-widest mb-5">How it works</p>
-          <div className="flex flex-col gap-4">
+        {/* How it works — intentionally lighter-weight than the sections above */}
+        <div className="bg-[#12121c]/60 border border-white/[0.06] rounded-xl p-5 mb-4">
+          <p className="text-xs font-medium text-slate-500 mb-4">How it works</p>
+          <div className="flex flex-col gap-3">
             {[
-              'We scan Adzuna + 90+ Greenhouse company boards continuously',
-              'Jobs are scored against your skills, location, experience and salary',
-              'The best matching jobs are emailed to you automatically',
+              'JobFind collects opportunities from supported job sources.',
+              'Jobs are scored against your skills and preferences.',
+              'Relevant matches are delivered by email.',
             ].map((step, i) => (
-              <div key={i} className="flex items-start gap-3">
-                <span className="shrink-0 w-5 h-5 rounded-full bg-violet-600/20 border border-violet-500/30 text-violet-400 text-[10px] flex items-center justify-center font-bold mt-0.5">
+              <div key={i} className="flex items-start gap-2.5">
+                <span className="shrink-0 w-5 h-5 rounded-full bg-white/5 text-slate-500 text-[10px] flex items-center justify-center font-semibold mt-0.5">
                   {i + 1}
                 </span>
-                <p className="text-sm text-slate-400 leading-relaxed">{step}</p>
+                <p className="text-[13px] text-slate-500 leading-relaxed">{step}</p>
               </div>
             ))}
           </div>
@@ -333,62 +206,96 @@ const Dashboard = () => {
         {/* Profile snapshot */}
         {profile && (
           <div className="bg-[#12121c] border border-white/10 rounded-2xl p-6 mb-4">
-            <div className="flex items-center justify-between mb-4">
-              <p className="text-[11px] text-slate-500 uppercase tracking-widest">Your profile</p>
+            <div className="flex items-center justify-between mb-5">
+              <p className="text-sm font-semibold text-white">Your job preferences</p>
               <Link
                 to="/profile"
-                className="text-xs text-violet-400 hover:text-violet-300 font-medium transition-colors"
+                className={`inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-white/5 hover:bg-white/10 border border-white/10 px-3 py-1.5 rounded-lg transition-colors ${FOCUS_RING}`}
               >
-                Edit →
+                <IconPencil className="w-3.5 h-3.5" /> Edit profile
               </Link>
             </div>
 
-            {profile.skills?.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-4">
-                {profile.skills.map(s => (
-                  <span key={s} className="text-xs bg-violet-600/15 text-violet-300 border border-violet-500/20 px-2.5 py-1 rounded-full">
-                    {s}
-                  </span>
-                ))}
+            {hasAnyProfileData(profile) ? (
+              <>
+                {profile.skills?.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-4">
+                    {profile.skills.map(s => (
+                      <span key={s} className="text-xs bg-violet-600/15 text-violet-300 border border-violet-500/20 px-2.5 py-1 rounded-full break-words max-w-full">
+                        {s}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-400">
+                  {profile.experience != null && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <IconClock className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                      {profile.experience} yr{profile.experience !== 1 ? 's' : ''} experience
+                    </span>
+                  )}
+                  {profile.locations?.length > 0 && (
+                    <span className="inline-flex items-center gap-1.5">
+                      <IconPin className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                      {profile.locations.join(', ')}
+                    </span>
+                  )}
+                  {profile.salary > 0 && (
+                    <span className="inline-flex items-center gap-1.5">₹{(profile.salary / 100000).toFixed(0)} LPA expected</span>
+                  )}
+                  {profile.remotePreference && profile.remotePreference !== 'any' && (
+                    <span className="capitalize">{profile.remotePreference}</span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-5">
+                <p className="text-sm text-slate-400 mb-4 max-w-sm mx-auto leading-relaxed">
+                  Your profile is empty. Add your skills and preferences so JobFind can start matching you with relevant roles.
+                </p>
+                <Link
+                  to="/profile"
+                  className={`inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-violet-600 hover:bg-violet-700 px-4 py-2 rounded-lg transition-colors ${FOCUS_RING}`}
+                >
+                  Complete your profile <IconArrowRight className="w-3.5 h-3.5" />
+                </Link>
               </div>
             )}
-
-            <div className="flex flex-wrap gap-x-5 gap-y-1.5 text-sm text-slate-500">
-              {profile.experience != null && (
-                <span>{profile.experience} yr{profile.experience !== 1 ? 's' : ''} experience</span>
-              )}
-              {profile.locations?.length > 0 && <span>{profile.locations.join(', ')}</span>}
-              {profile.salary > 0 && <span>₹{(profile.salary / 100000).toFixed(0)} LPA</span>}
-              {profile.remotePreference && profile.remotePreference !== 'any' && (
-                <span className="capitalize">{profile.remotePreference}</span>
-              )}
-            </div>
           </div>
         )}
 
-        {/* Feedback */}
-        <FeedbackSection currentUserId={profile?._id} />
-
-        {/* Unsubscribe */}
+        {/* Footer — the full feedback form/list now lives on its own page
+            (/feedback); this is just a compact entry point, kept alongside
+            the unsubscribe action so the dashboard still ends with a clear,
+            intentional close rather than an abrupt empty gap. */}
         {profile && (
-          <div className="text-center mt-6">
-            <button
-              onClick={handleToggleEmail}
-              disabled={togglingEmail}
-              className="text-xs text-slate-600 hover:text-slate-400 underline underline-offset-2 transition-colors disabled:opacity-50"
-            >
-              {togglingEmail
-                ? '...'
-                : paused
-                ? 'Resume job emails'
-                : 'Stop receiving job emails'}
-            </button>
+          <div className="mt-2 pt-6 border-t border-white/[0.06] text-center space-y-3">
+            <div className="flex items-center justify-center gap-4 text-xs">
+              <Link
+                to="/feedback"
+                className={`text-slate-500 hover:text-slate-300 transition-colors rounded ${FOCUS_RING}`}
+              >
+                Share feedback
+              </Link>
+              <span className="text-slate-800">·</span>
+              <button
+                onClick={handleToggleEmail}
+                disabled={togglingEmail}
+                className={`text-slate-500 hover:text-slate-300 underline underline-offset-2 transition-colors disabled:opacity-50 rounded ${FOCUS_RING}`}
+              >
+                {togglingEmail
+                  ? '...'
+                  : paused
+                  ? 'Resume job emails'
+                  : 'Stop receiving job emails'}
+              </button>
+            </div>
+            <p className="text-xs text-slate-700">
+              Check your spam folder if you haven't received anything yet
+            </p>
           </div>
         )}
-
-        <p className="text-center text-xs text-slate-700 mt-4">
-          Check your spam folder if you haven't received anything yet
-        </p>
       </div>
     </div>
   );

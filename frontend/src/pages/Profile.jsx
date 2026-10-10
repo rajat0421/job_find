@@ -78,7 +78,7 @@ const TagInput = ({ label, hint, placeholder, tags, onChange }) => {
           {tags.map(tag => (
             <span key={tag} className="inline-flex items-center gap-1 bg-violet-600/15 text-violet-300 border border-violet-500/20 text-xs font-medium px-2.5 py-1 rounded-full break-words max-w-full">
               {tag}
-              <button type="button" onClick={() => remove(tag)} className="hover:text-white leading-none">&times;</button>
+              <button type="button" onClick={() => remove(tag)} aria-label={`Remove ${tag}`} className="hover:text-white leading-none p-1 -m-1 rounded">&times;</button>
             </span>
           ))}
         </div>

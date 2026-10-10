@@ -88,7 +88,7 @@ const RoleSelector = ({ selected, onChange }) => {
           {selected.map(role => (
             <span key={role} className="inline-flex items-center gap-1 bg-violet-600/20 text-violet-300 border border-violet-500/30 text-xs font-medium px-2.5 py-1 rounded-full">
               {role}
-              <button type="button" onClick={() => remove(role)} className="hover:text-white leading-none ml-0.5">&times;</button>
+              <button type="button" onClick={() => remove(role)} aria-label={`Remove ${role}`} className="hover:text-white leading-none ml-0.5 p-1 -my-1 -mr-1 rounded">&times;</button>
             </span>
           ))}
         </div>

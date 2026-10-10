@@ -58,11 +58,13 @@ const FeedbackCard = ({ fb, currentUserId }) => {
 
       <p className="text-sm text-slate-300 leading-relaxed break-words">{fb.message}</p>
 
-      <div className="flex items-center gap-4 mt-2.5">
+      <div className="flex items-center gap-2 mt-1.5 -ml-1.5">
         <button
           onClick={handleLike}
           disabled={acting}
-          className={`flex items-center gap-1.5 text-xs transition-colors disabled:opacity-50 rounded ${FOCUS_RING} ${
+          aria-label={liked ? 'Remove like' : 'Like this feedback'}
+          aria-pressed={liked}
+          className={`flex items-center gap-1.5 text-xs transition-colors disabled:opacity-50 rounded px-1.5 py-1.5 ${FOCUS_RING} ${
             liked ? 'text-violet-400' : 'text-slate-600 hover:text-slate-400'
           }`}
         >
@@ -72,7 +74,9 @@ const FeedbackCard = ({ fb, currentUserId }) => {
         <button
           onClick={handleDislike}
           disabled={acting}
-          className={`flex items-center gap-1.5 text-xs transition-colors disabled:opacity-50 rounded ${FOCUS_RING} ${
+          aria-label={disliked ? 'Remove dislike' : 'Dislike this feedback'}
+          aria-pressed={disliked}
+          className={`flex items-center gap-1.5 text-xs transition-colors disabled:opacity-50 rounded px-1.5 py-1.5 ${FOCUS_RING} ${
             disliked ? 'text-red-400' : 'text-slate-600 hover:text-slate-400'
           }`}
         >

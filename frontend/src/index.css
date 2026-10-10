@@ -56,3 +56,17 @@ select:-webkit-autofill:focus {
   caret-color: #f1f5f9;
   transition: background-color 9999s ease-in-out 0s, color 9999s ease-in-out 0s;
 }
+
+/* Respect the OS-level "reduce motion" preference site-wide. The app only
+   ever uses `transition-colors`/opacity/backdrop-blur transitions (no
+   transform-based motion, parallax, or auto-playing animation to begin
+   with), so this is a narrow, safe global override: it neutralizes timing
+   for anyone who's asked for it without needing per-component changes. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

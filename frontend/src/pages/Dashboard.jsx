@@ -104,6 +104,13 @@ const COMPLETENESS_CHECKS = [
 ];
 const hasAnyProfileData = (p) => COMPLETENESS_CHECKS.some((check) => check(p));
 
+// Whether the metadata column (experience/locations/salary/remote
+// preference) has anything to show at all — used to avoid rendering an empty
+// bordered column next to the skills list when a profile only has skills/
+// roles set and nothing else yet.
+const hasMetadata = (p) =>
+  p.experience != null || p.locations?.length > 0 || p.salary > 0 || (p.remotePreference && p.remotePreference !== 'any');
+
 const Dashboard = () => {
   const { user } = useAuth();
   const [profile, setProfile] = useState(null);
@@ -199,8 +206,8 @@ const Dashboard = () => {
             </div>
 
             {hasAnyProfileData(profile) ? (
-              <div className="lg:grid lg:grid-cols-3 lg:gap-8">
-                <div className="lg:col-span-2">
+              <div className={hasMetadata(profile) ? 'lg:grid lg:grid-cols-3 lg:gap-8' : ''}>
+                <div className={hasMetadata(profile) ? 'lg:col-span-2' : ''}>
                   {profile.skills?.length > 0 ? (
                     <div className="flex flex-wrap gap-1.5">
                       {profile.skills.map(s => (
@@ -214,26 +221,32 @@ const Dashboard = () => {
                   )}
                 </div>
 
-                <div className="flex flex-col gap-2 mt-4 lg:mt-0 text-sm text-slate-400 lg:border-l lg:border-white/[0.06] lg:pl-6">
-                  {profile.experience != null && (
-                    <span className="inline-flex items-center gap-1.5">
-                      <IconClock className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-                      {profile.experience} yr{profile.experience !== 1 ? 's' : ''} experience
-                    </span>
-                  )}
-                  {profile.locations?.length > 0 && (
-                    <span className="inline-flex items-start gap-1.5">
-                      <IconPin className="w-3.5 h-3.5 text-slate-600 shrink-0 mt-0.5" />
-                      <span className="break-words">{profile.locations.join(', ')}</span>
-                    </span>
-                  )}
-                  {profile.salary > 0 && (
-                    <span className="inline-flex items-center gap-1.5">₹{(profile.salary / 100000).toFixed(0)} LPA expected</span>
-                  )}
-                  {profile.remotePreference && profile.remotePreference !== 'any' && (
-                    <span className="capitalize">{profile.remotePreference}</span>
-                  )}
-                </div>
+                {/* Only rendered (with its divider) when there's actually
+                    something to show here — otherwise the skills column goes
+                    full-width above instead of leaving an empty bordered
+                    column next to it. */}
+                {hasMetadata(profile) && (
+                  <div className="flex flex-col gap-2 mt-4 lg:mt-0 text-sm text-slate-400 lg:border-l lg:border-white/[0.06] lg:pl-6">
+                    {profile.experience != null && (
+                      <span className="inline-flex items-center gap-1.5">
+                        <IconClock className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+                        {profile.experience} yr{profile.experience !== 1 ? 's' : ''} experience
+                      </span>
+                    )}
+                    {profile.locations?.length > 0 && (
+                      <span className="inline-flex items-start gap-1.5">
+                        <IconPin className="w-3.5 h-3.5 text-slate-600 shrink-0 mt-0.5" />
+                        <span className="break-words">{profile.locations.join(', ')}</span>
+                      </span>
+                    )}
+                    {profile.salary > 0 && (
+                      <span className="inline-flex items-center gap-1.5">₹{(profile.salary / 100000).toFixed(0)} LPA expected</span>
+                    )}
+                    {profile.remotePreference && profile.remotePreference !== 'any' && (
+                      <span className="capitalize">{profile.remotePreference}</span>
+                    )}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="text-center py-5">

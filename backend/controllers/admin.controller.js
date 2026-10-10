@@ -846,12 +846,46 @@ const getUpcomingEmails = async (_req, res) => {
   }
 };
 
+// A client-supplied requestId (Improvement 11 follow-up) identifies ONE
+// logical "send digest now" click, so retrying that SAME click (e.g. after a
+// network timeout where the admin's browser never learned whether the
+// server actually sent the email) reuses the same idempotency key instead of
+// minting a fresh one on every attempt — closing the gap where the previous
+// minute-bucket-only key could roll over mid-retry and let a duplicate
+// through. See AdminUserDetail.jsx's sendEmail() for how the frontend
+// generates and reuses this value across retries of one click, and clears it
+// (so the next click is a deliberate new send) once it gets ANY definitive
+// response from the server.
+//
+// Validated defensively since it's client input: must look like a short
+// token/UUID, never arbitrary length or content. Always still composed under
+// this specific user's id and the 'manual:' namespace, so a client can never
+// forge a key that collides with another user's delivery or with any
+// scheduled-delivery key — MongoDB's unique index is still the actual
+// enforcement mechanism (see models/EmailLog.js); this just changes WHICH
+// string gets protected by it.
+const isValidClientRequestId = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{8,128}$/.test(v);
+
+const manualDeliveryKeyFor = (user, req, manualIdempotencyKey) => {
+  const clientRequestId = req.body?.requestId || req.headers['x-idempotency-key'];
+  if (isValidClientRequestId(clientRequestId)) {
+    return `manual:${user._id}:client:${clientRequestId}`;
+  }
+  // No (valid) client-supplied key — an older frontend build, a direct API
+  // call, or a malformed value. Falls back to the pre-existing IST-minute-
+  // bucket behavior, unchanged: still fully protects against a rapid
+  // duplicate within the same minute, just not across a minute boundary —
+  // see this improvement's report for why that's a documented, accepted
+  // limitation for callers that don't supply a requestId.
+  return manualIdempotencyKey(user._id);
+};
+
 // POST /api/admin/users/:id/send-digest — the admin "send now" manual action
 // for a single user. Uses the SAME claim mechanism as the scheduled cron
-// (Improvement 11), but in the 'manual:' key namespace (manualIdempotencyKey)
-// so that: (a) a retried/double-clicked request for this user can't send
-// twice, and (b) this manual send can never reserve or block the user's next
-// SCHEDULED digest, which claims under a completely separate 'scheduled:' key.
+// (Improvement 11), in the 'manual:' key namespace, so that: (a) a
+// retried/double-clicked request for this user can't send twice, and (b)
+// this manual send can never reserve or block the user's next SCHEDULED
+// digest, which claims under a completely separate 'scheduled:' key.
 const sendDigestForUser = async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select('-password');
@@ -860,17 +894,18 @@ const sendDigestForUser = async (req, res) => {
     const { sendJobDigestEmail, sendAdminDigestCopy } = require('../services/email.service');
     const EmailLog = require('../models/EmailLog');
     const Config = require('../models/Config');
-    const { claimDelivery, manualIdempotencyKey } = require('../jobs/dailyEmail.job');
+    const { claimDelivery, manualIdempotencyKey, getEligibleDigestJobs } = require('../jobs/dailyEmail.job');
 
     const threshold = await getEmailThreshold();
-    const newJobs = await UserJob.find({ userId: user._id, emailed: false, score: { $gte: threshold } })
-      .sort({ score: -1 })
-      .limit(10)
-      .populate('jobId');
+    // Shared with the scheduled cron (sendDigest) — same matcherVersion,
+    // needsMatching, job-status and userFingerprint staleness checks apply
+    // here now too, closing the gap where this manual path previously used
+    // its own, separately-maintained (and drifted) query.
+    const newJobs = await getEligibleDigestJobs(user, threshold);
 
     if (!newJobs.length) return res.status(400).json({ message: `No unread jobs with score ≥ ${threshold} for this user` });
 
-    const claim = await claimDelivery(manualIdempotencyKey(user._id), { userId: user._id, email: user.email, name: user.name || '' });
+    const claim = await claimDelivery(manualDeliveryKeyFor(user, req, manualIdempotencyKey), { userId: user._id, email: user.email, name: user.name || '' });
     if (!claim.claimed) {
       // Same manual send already claimed/sent moments ago — most likely a
       // double-click or an HTTP retry of this exact request. Not an error;

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import adminApi from '../services/adminApi';
 
@@ -125,13 +125,36 @@ const AdminUserDetail = () => {
     } catch {} finally { setScheduleSaving(false); }
   };
 
+  // Idempotency-key follow-up: identifies ONE logical "send digest now" click
+  // so a retry of that same click (e.g. after a network timeout where we
+  // never learned whether the server actually sent the email) reuses the
+  // same key instead of minting a fresh one every attempt. Cleared after any
+  // DEFINITIVE outcome (a real response from the server, success or error) —
+  // only a true network-level failure (no response at all) leaves it in
+  // place, so the next click is treated as a retry of the same action rather
+  // than a brand-new one. See admin.controller.js's sendDigestForUser for how
+  // the backend uses this.
+  const sendDigestRequestId = useRef(null);
+
   const sendEmail = async () => {
     setSending(true); setSendMsg('');
+    if (!sendDigestRequestId.current) {
+      sendDigestRequestId.current = crypto.randomUUID();
+    }
     try {
-      const res = await adminApi.post(`/admin/users/${id}/send-digest`);
+      const res = await adminApi.post(`/admin/users/${id}/send-digest`, { requestId: sendDigestRequestId.current });
       setSendMsg(`✓ ${res.data.message}`);
+      sendDigestRequestId.current = null; // definitive success — a future click is a new, deliberate send
     } catch (err) {
       setSendMsg(err.response?.data?.message || 'Failed');
+      if (err.response) {
+        // The server answered (even with an error) — a definitive outcome,
+        // so the next click starts a fresh logical action.
+        sendDigestRequestId.current = null;
+      }
+      // else: no response reached us at all (timeout/network failure) — keep
+      // the same requestId so a manual retry is recognized as the same
+      // logical operation, not a new one.
     } finally {
       setSending(false);
       setTimeout(() => setSendMsg(''), 4000);

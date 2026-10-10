@@ -123,6 +123,64 @@ const isDue = (user) => {
   return !user.lastEmailedAt || (now - new Date(user.lastEmailedAt).getTime()) >= intervalMs - DUE_GRACE_MS;
 };
 
+// Postings in these statuses are dropped from digest selection — see
+// getEligibleDigestJobs for why this never marks the underlying UserJob
+// emailed just because it was excluded.
+const INACTIVE_JOB_STATUSES = ['closed', 'expired'];
+
+// The single source of truth for "which of this user's UserJob records are
+// eligible to go out in a digest right now" — shared by the scheduled cron
+// (sendDigest, below) AND the admin's manual per-user send
+// (sendDigestForUser in admin.controller.js). Before Improvement 11's
+// follow-up, sendDigestForUser had its own, separate, drifted-out-of-sync
+// query that lacked the matcherVersion/needsMatching/userFingerprint
+// staleness checks entirely — routing both callers through this one function
+// makes that kind of drift structurally impossible going forward.
+//
+// Inactive postings are dropped here, before anything downstream ever sees
+// them — so a UserJob pointing at a since-closed/expired job is never
+// emailed and, critically, never gets marked emailed:true just because it
+// was excluded. It simply stays emailed:false indefinitely (it will never be
+// emailed now, which is the intended outcome, not a bug to special-case
+// further).
+//
+// matcherVersion filter: never send a score computed under an older/
+// obsolete scoring algorithm — a record not yet rescored under the current
+// MATCHER_VERSION (e.g. mid-way through the bounded version sweep after an
+// algorithm change) is excluded until that recalculation actually happens,
+// rather than emailing a potentially-obsolete score. It becomes eligible
+// again automatically once the sweep (or a per-user trigger) refreshes it.
+//
+// needsMatching filter: the attached job itself may have a content change
+// still awaiting reprocessing by the pending-batch sweep — until that
+// happens, this record's score reflects the job's PREVIOUS content, so it's
+// held back the same way.
+//
+// userFingerprint filter: a profile edit triggers matchJobsForUser/
+// rescoreUserMatches fire-and-forget (see user.controller.js's
+// updateProfile) — it is not guaranteed to finish before the next email
+// tick (or before an admin clicks "send digest now"). matcherVersion alone
+// can't catch this: the record was already scored under the current
+// algorithm, just against the user's PREVIOUS profile. Comparing against the
+// user's current fingerprint (already in memory — no extra query) catches
+// that race without scanning anything beyond this same bounded,
+// already-thresholded candidate list.
+const getEligibleDigestJobs = async (user, threshold) => {
+  const currentUserFingerprint = computeUserFingerprint(user);
+  const candidates = await UserJob.find({
+    userId: user._id,
+    emailed: false,
+    score: { $gte: threshold },
+    matcherVersion: MATCHER_VERSION,
+  })
+    .sort({ score: -1 })
+    .limit(10)
+    .populate('jobId');
+
+  return candidates.filter((uj) => uj.jobId && !INACTIVE_JOB_STATUSES.includes(uj.jobId.status) && !uj.jobId.needsMatching
+    && uj.userFingerprint === currentUserFingerprint);
+};
+
 // force=true (manual "Send emails now") bypasses each user's scheduled hour/interval
 // and sends to anyone with sendable jobs immediately. The cron calls it without force.
 const sendDigest = async ({ force = false } = {}) => {
@@ -138,47 +196,8 @@ const sendDigest = async ({ force = false } = {}) => {
   const adminEmail = adminCfg?.value || null;
   const threshold = await getEmailThreshold();
 
-  const INACTIVE = ['closed', 'expired'];
-
   for (const user of due) {
-    // Inactive postings are dropped here, before anything below ever sees them —
-    // so a UserJob pointing at a since-closed/expired job is never emailed and,
-    // critically, never gets marked emailed:true just because it was excluded.
-    // It simply stays emailed:false indefinitely (it will never be emailed now,
-    // which is the intended outcome, not a bug to special-case further).
-    //
-    // matcherVersion filter: never send a score computed under an older/
-    // obsolete scoring algorithm — a record not yet rescored under the current
-    // MATCHER_VERSION (e.g. mid-way through the bounded version sweep after an
-    // algorithm change) is excluded until that recalculation actually happens,
-    // rather than emailing a potentially-obsolete score. It becomes eligible
-    // again automatically once the sweep (or a per-user trigger) refreshes it.
-    //
-    // needsMatching filter: the attached job itself may have a content change
-    // still awaiting reprocessing by the pending-batch sweep — until that
-    // happens, this record's score reflects the job's PREVIOUS content, so it's
-    // held back the same way.
-    //
-    // userFingerprint filter: a profile edit triggers matchJobsForUser/
-    // rescoreUserMatches fire-and-forget (see user.controller.js's
-    // updateProfile) — it is not guaranteed to finish before the next email
-    // tick. matcherVersion alone can't catch this: the record was already
-    // scored under the current algorithm, just against the user's PREVIOUS
-    // profile. Comparing against the user's current fingerprint (already in
-    // memory — no extra query) catches that race without scanning anything
-    // beyond this same bounded, already-thresholded candidate list.
-    const currentUserFingerprint = computeUserFingerprint(user);
-    const newJobs = (await UserJob.find({
-      userId: user._id,
-      emailed: false,
-      score: { $gte: threshold },
-      matcherVersion: MATCHER_VERSION,
-    })
-      .sort({ score: -1 })
-      .limit(10)
-      .populate('jobId'))
-      .filter((uj) => uj.jobId && !INACTIVE.includes(uj.jobId.status) && !uj.jobId.needsMatching
-        && uj.userFingerprint === currentUserFingerprint);
+    const newJobs = await getEligibleDigestJobs(user, threshold);
 
     if (!newJobs.length) {
       const [totalMatched, totalUnread] = await Promise.all([
@@ -306,4 +325,5 @@ module.exports = {
   claimDelivery,
   scheduledIdempotencyKey,
   manualIdempotencyKey,
+  getEligibleDigestJobs,
 };

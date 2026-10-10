@@ -1,6 +1,6 @@
 const axios = require('axios');
 const crypto = require('crypto');
-const Job = require('../models/Job');
+const { observeJob, sweepMissingJobs } = require('../services/jobLifecycle.service');
 
 // Public Lever Postings API — no auth needed. Companies are managed in the Company
 // collection (admin portal), with leverCompanies.json as a seed/fallback.
@@ -59,33 +59,46 @@ const fetchJobs = async () => {
       fetched = jobs.length;
       totalFetched += fetched;
 
+      // Lever's postings API returns a complete current snapshot of this board
+      // (no pagination) — once we're sure the scan succeeded and wasn't
+      // suspiciously empty, absence from it is a meaningful missing-posting signal.
+      const observedIds = [];
       for (const j of jobs) {
+        const sourceJobId = j.id ? String(j.id) : null;
+        if (sourceJobId) observedIds.push(sourceJobId); // seen even if we skip it below for missing fields
+
         const title = j.text || '';
         const location = j.categories?.location || (j.categories?.allLocations || []).join(', ') || '';
         const applyLink = j.applyUrl || j.hostedUrl || '';
         if (!title || !applyLink) continue;
 
         const hash = generateJobHash(title, company, location);
-        const exists = await Job.findOne({ hash });
-        if (exists) continue;
 
-        await Job.create({
-          title,
-          company,
-          location,
-          salaryMin: null,
-          salaryMax: null,
-          description: buildDescription(j),
-          applyLink,
+        const { created } = await observeJob({
           source: 'lever',
-          workplaceType: j.workplaceType || null,
-          country: j.country || null,
+          sourceBoard: token,
+          sourceJobId,
           hash,
-          postedAt: j.createdAt ? new Date(j.createdAt) : null,
+          fields: {
+            title,
+            company,
+            location,
+            salaryMin: null,
+            salaryMax: null,
+            description: buildDescription(j),
+            applyLink,
+            workplaceType: j.workplaceType || null,
+            country: j.country || null,
+            postedAt: j.createdAt ? new Date(j.createdAt) : null,
+          },
         });
-        newCount++;
+        if (created) newCount++;
       }
       if (_id) await Company.updateOne({ _id }, { lastFetchedAt: new Date(), lastJobCount: fetched });
+
+      if (fetched > 0) {
+        await sweepMissingJobs({ source: 'lever', sourceBoard: token, observedSourceJobIds: observedIds });
+      }
     } catch (err) {
       // Token may be wrong, company left Lever, or on the EU instance — skip and continue
       console.warn(`[Lever] Skipped ${company} (${token}): ${err.response?.status || err.message}`);

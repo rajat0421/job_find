@@ -1,6 +1,6 @@
 const axios = require('axios');
 const crypto = require('crypto');
-const Job = require('../models/Job');
+const { observeJob, sweepMissingJobs } = require('../services/jobLifecycle.service');
 
 const generateJobHash = (title, company, location) =>
   crypto.createHash('md5').update(`${title}-${company}-${location}`).digest('hex');
@@ -45,31 +45,49 @@ const fetchJobs = async () => {
       totalFetched += fetched;
       const company = name || (token.charAt(0).toUpperCase() + token.slice(1));
 
+      // Greenhouse's job board API returns a complete current snapshot of this
+      // board's open postings (no pagination) — so, once we're sure this scan
+      // actually succeeded and wasn't suspiciously empty, absence from it is a
+      // meaningful (though still grace-windowed) signal a posting may have closed.
+      const observedIds = [];
       for (const j of jobs) {
+        const sourceJobId = j.id != null ? String(j.id) : null;
+        if (sourceJobId) observedIds.push(sourceJobId); // record as "seen" even if later fields are incomplete
+
         const title = j.title || '';
         const location = j.location?.name || '';
         const hash = generateJobHash(title, company, location);
 
-        const exists = await Job.findOne({ hash });
-        if (exists) continue;
-
-        await Job.create({
-          title,
-          company,
-          location,
-          salaryMin: null,
-          salaryMax: null,
-          description: stripHtml(j.content),
-          applyLink: j.absolute_url,
+        const { created } = await observeJob({
           source: 'greenhouse',
+          sourceBoard: token,
+          sourceJobId,
           hash,
-          postedAt: j.updated_at ? new Date(j.updated_at) : null,
+          fields: {
+            title,
+            company,
+            location,
+            salaryMin: null,
+            salaryMax: null,
+            description: stripHtml(j.content),
+            applyLink: j.absolute_url,
+            postedAt: j.updated_at ? new Date(j.updated_at) : null,
+          },
         });
-        newCount++;
+        if (created) newCount++;
       }
+
       if (_id) await Company.updateOne({ _id }, { lastFetchedAt: new Date(), lastJobCount: fetched });
+
+      // "fetched > 0" guards against an empty-but-unverified response (board API
+      // glitch returning a valid-but-empty payload) being mistaken for "this
+      // company now has zero open jobs" — see Improvement 3's lifecycle rules.
+      if (fetched > 0) {
+        await sweepMissingJobs({ source: 'greenhouse', sourceBoard: token, observedSourceJobIds: observedIds });
+      }
     } catch (err) {
-      // Board token might be wrong or company removed it — skip silently
+      // Board token might be wrong, company removed it, or the request failed —
+      // skip silently. Crucially: never run missing-detection for a failed scan.
       console.warn(`[Greenhouse] Skipped ${token}: ${err.message}`);
       if (_id) await Company.updateOne({ _id }, { lastFetchedAt: new Date(), lastJobCount: 0 });
     }

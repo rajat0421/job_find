@@ -9,10 +9,14 @@ jest.mock('../../services/jobFetcher.service', () => ({ fetchAdzunaJobs: jest.fn
 jest.mock('../../services/jobMatcher.service', () => ({
   matchJobsForAllUsers: jest.fn().mockResolvedValue(),
 }));
+jest.mock('../../services/jobLifecycle.service', () => ({
+  expireStaleJobs: jest.fn().mockResolvedValue(0),
+}));
 
 const cron = require('node-cron');
 const { fetchAdzunaJobs } = require('../../services/jobFetcher.service');
 const { matchJobsForAllUsers } = require('../../services/jobMatcher.service');
+const { expireStaleJobs } = require('../../services/jobLifecycle.service');
 const { startFetchJobsCron } = require('../fetchJobs.job');
 const { startMatchJobsCron } = require('../matchJobs.job');
 
@@ -37,6 +41,7 @@ describe('fetch/match cron split', () => {
     const tick = cron.schedule.mock.calls[0][1];
     await tick();
 
+    expect(expireStaleJobs).toHaveBeenCalledTimes(1);
     expect(matchJobsForAllUsers).toHaveBeenCalledTimes(1);
     expect(fetchAdzunaJobs).not.toHaveBeenCalled();
   });

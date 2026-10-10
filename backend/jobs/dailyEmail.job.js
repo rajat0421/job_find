@@ -55,15 +55,23 @@ const sendDigest = async ({ force = false } = {}) => {
   const adminEmail = adminCfg?.value || null;
   const threshold = await getEmailThreshold();
 
+  const INACTIVE = ['closed', 'expired'];
+
   for (const user of due) {
-    const newJobs = await UserJob.find({
+    // Inactive postings are dropped here, before anything below ever sees them —
+    // so a UserJob pointing at a since-closed/expired job is never emailed and,
+    // critically, never gets marked emailed:true just because it was excluded.
+    // It simply stays emailed:false indefinitely (it will never be emailed now,
+    // which is the intended outcome, not a bug to special-case further).
+    const newJobs = (await UserJob.find({
       userId: user._id,
       emailed: false,
       score: { $gte: threshold },
     })
       .sort({ score: -1 })
       .limit(10)
-      .populate('jobId');
+      .populate('jobId'))
+      .filter((uj) => uj.jobId && !INACTIVE.includes(uj.jobId.status));
 
     if (!newJobs.length) {
       const [totalMatched, totalUnread] = await Promise.all([

@@ -256,9 +256,17 @@ const scoreJob = (user, job) => scoreJobDetailed(user, job).score;
 // spin-down) or a user onboarded after a job's original fetch window passed.
 const MATCH_WINDOW = 2000;
 
+// Excludes closed/expired postings from new matches. Written as $nin rather than
+// requiring status:'active' so it's safe against pre-existing Job documents that
+// predate the lifecycle fields entirely — Mongoose applies the schema default
+// ('active') on read for any doc missing the field, and MongoDB's $nin (like $ne)
+// also matches documents where the field doesn't exist at all, so no backfill
+// migration is required for this filter to behave correctly on old records.
+const ACTIVE_JOB_FILTER = { status: { $nin: ['closed', 'expired'] } };
+
 const matchJobsForAllUsers = async () => {
   const users = await User.find({ isOnboarded: true, isEmailVerified: true });
-  const jobs = await Job.find().sort({ createdAt: -1 }).limit(MATCH_WINDOW);
+  const jobs = await Job.find(ACTIVE_JOB_FILTER).sort({ createdAt: -1 }).limit(MATCH_WINDOW);
 
   console.log(`[Matcher] ${jobs.length} recent jobs × ${users.length} users`);
   let totalNew = 0;
@@ -270,7 +278,7 @@ const matchJobsForUser = async (userId) => {
   const user = await User.findById(userId);
   if (!user) return;
 
-  const jobs = await Job.find().sort({ createdAt: -1 }).limit(500);
+  const jobs = await Job.find(ACTIVE_JOB_FILTER).sort({ createdAt: -1 }).limit(500);
   console.log(`[Matcher] Onboard match: ${jobs.length} jobs for user ${user.email}`);
 
   const created = await _matchJobsForUser(user, jobs);

@@ -18,8 +18,13 @@ const getMatchedJobs = async (req, res) => {
         .populate('jobId'),
     ]);
 
+    const INACTIVE = ['closed', 'expired'];
     const jobs = userJobs
       .filter((uj) => uj.jobId) // skip UserJobs whose Job was deleted
+      // Inactive postings are excluded from normal recommendations, but stay
+      // visible in a user's own saved/applied history (with status passed
+      // through below via the spread, so the UI can show it's no longer open).
+      .filter((uj) => uj.saved || uj.applied || !INACTIVE.includes(uj.jobId.status))
       .map((uj) => ({
         ...uj.jobId.toObject(),
         score: uj.score,

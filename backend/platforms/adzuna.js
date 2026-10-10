@@ -1,6 +1,6 @@
 const axios = require('axios');
 const crypto = require('crypto');
-const Job = require('../models/Job');
+const { observeJob } = require('../services/jobLifecycle.service');
 
 const generateJobHash = (title, company, location) =>
   crypto.createHash('md5').update(`${title}-${company}-${location}`).digest('hex');
@@ -29,25 +29,36 @@ const fetchForCategory = async (appId, appKey, what) => {
       if (!jobs.length) break; // stop paginating this category once results dry up
       fetched += jobs.length;
 
+      // NOTE on lifecycle: Adzuna's fetch is a limited keyword/category search
+      // across a fixed category list (see CATEGORIES above), never a complete
+      // snapshot of anything. A specific job's absence from this search proves
+      // nothing about whether it's still open — so, unlike the Greenhouse/Lever/
+      // Ashby adapters, this NEVER calls sweepMissingJobs. Adzuna-sourced jobs
+      // rely solely on the global age-based expiry fallback in
+      // jobLifecycle.service.js's expireStaleJobs(). This is a documented
+      // limitation, not an oversight: Adzuna cannot reliably prove closure.
       for (const j of jobs) {
         const title = j.title?.label || j.title || '';
         const company = j.company?.display_name || '';
         const location = j.location?.display_name || '';
+        const sourceJobId = j.id != null ? String(j.id) : null;
         const hash = generateJobHash(title, company, location);
 
-        if (await Job.findOne({ hash })) continue;
-
-        await Job.create({
-          title, company, location,
-          salaryMin: j.salary_min,
-          salaryMax: j.salary_max,
-          description: j.description,
-          applyLink: j.redirect_url,
+        const { created } = await observeJob({
           source: 'adzuna',
+          sourceBoard: null,
+          sourceJobId,
           hash,
-          postedAt: j.created ? new Date(j.created) : null,
+          fields: {
+            title, company, location,
+            salaryMin: j.salary_min,
+            salaryMax: j.salary_max,
+            description: j.description,
+            applyLink: j.redirect_url,
+            postedAt: j.created ? new Date(j.created) : null,
+          },
         });
-        newCount++;
+        if (created) newCount++;
       }
     } catch (err) {
       console.error(`[Adzuna] Failed for "${what}" page=${page}:`, err.message);

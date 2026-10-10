@@ -1,5 +1,6 @@
 const cron = require('node-cron');
 const { matchJobsForAllUsers } = require('../services/jobMatcher.service');
+const { expireStaleJobs } = require('../services/jobLifecycle.service');
 
 let registered = false;
 let task = null;
@@ -13,6 +14,10 @@ const runMatchTick = async () => {
   running = true;
   try {
     console.log('[Cron] Matching jobs...');
+    // Age-based expiry sweep runs first so matching never scores a stale posting
+    // this cycle. Cheap (one indexed bulk update); never deletes anything.
+    const expiredCount = await expireStaleJobs();
+    if (expiredCount > 0) console.log(`[Cron] Expired ${expiredCount} stale job(s)`);
     await matchJobsForAllUsers();
   } finally {
     running = false;

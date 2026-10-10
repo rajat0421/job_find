@@ -1,6 +1,6 @@
 const axios = require('axios');
 const crypto = require('crypto');
-const Job = require('../models/Job');
+const { observeJob, sweepMissingJobs } = require('../services/jobLifecycle.service');
 
 // Public Ashby Job Posting API — no auth. Companies are managed in the Company
 // collection (admin portal), with ashbyBoards.json as a seed/fallback.
@@ -37,33 +37,46 @@ const fetchJobs = async () => {
       fetched = jobs.length;
       totalFetched += fetched;
 
+      // Ashby's job board API returns a complete current snapshot of this board
+      // (no pagination) — once we're sure the scan succeeded and wasn't
+      // suspiciously empty, absence from it is a meaningful missing-posting signal.
+      const observedIds = [];
       for (const j of jobs) {
+        const sourceJobId = j.id ? String(j.id) : null;
+        if (sourceJobId) observedIds.push(sourceJobId); // seen even if we skip it below for missing fields
+
         const title = j.title || '';
         const location = j.location || '';
         const applyLink = j.applyUrl || j.jobUrl || '';
         if (!title || !applyLink) continue;
 
         const hash = generateJobHash(title, company, location);
-        const exists = await Job.findOne({ hash });
-        if (exists) continue;
 
-        await Job.create({
-          title,
-          company,
-          location,
-          salaryMin: null, // Ashby compensation is USD text — skip to avoid INR mismatch
-          salaryMax: null,
-          description: j.descriptionPlain || '',
-          applyLink,
+        const { created } = await observeJob({
           source: 'ashby',
-          workplaceType: normalizeWorkplace(j.workplaceType) || (j.isRemote ? 'remote' : null),
-          country: null,
+          sourceBoard: board,
+          sourceJobId,
           hash,
-          postedAt: j.publishedAt ? new Date(j.publishedAt) : null,
+          fields: {
+            title,
+            company,
+            location,
+            salaryMin: null, // Ashby compensation is USD text — skip to avoid INR mismatch
+            salaryMax: null,
+            description: j.descriptionPlain || '',
+            applyLink,
+            workplaceType: normalizeWorkplace(j.workplaceType) || (j.isRemote ? 'remote' : null),
+            country: null,
+            postedAt: j.publishedAt ? new Date(j.publishedAt) : null,
+          },
         });
-        newCount++;
+        if (created) newCount++;
       }
       if (_id) await Company.updateOne({ _id }, { lastFetchedAt: new Date(), lastJobCount: fetched });
+
+      if (fetched > 0) {
+        await sweepMissingJobs({ source: 'ashby', sourceBoard: board, observedSourceJobIds: observedIds });
+      }
     } catch (err) {
       console.warn(`[Ashby] Skipped ${company} (${board}): ${err.response?.status || err.message}`);
       if (_id) await Company.updateOne({ _id }, { lastFetchedAt: new Date(), lastJobCount: 0 });

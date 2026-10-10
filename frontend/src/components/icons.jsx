@@ -9,6 +9,11 @@ const base = (children, props) => (
   </svg>
 );
 
+export const IconClose = (props) => base(
+  <path d="M5 5l10 10M15 5L5 15" />,
+  props
+);
+
 export const IconMail = (props) => base(
   <>
     <rect x="2.5" y="4.5" width="15" height="11" rx="2" />

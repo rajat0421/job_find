@@ -13,6 +13,13 @@ const fetchRunSchema = new mongoose.Schema({
     name:    { type: String },   // 'Adzuna' | 'Greenhouse' | 'Lever' | 'Ashby'
     fetched: { type: Number, default: 0 },
     added:   { type: Number, default: 0 },
+    // Improvement 9 audit — previously only `created` (added) was surfaced
+    // from observeJob(); the fingerprint-based "did a scoring-relevant field
+    // actually change" signal it already computes internally (see
+    // jobLifecycle.service.js) was discarded. A job seen again with no
+    // content change is neither added nor updated — it simply doesn't
+    // increment either counter (still reflected in `fetched`).
+    updated: { type: Number, default: 0 },
 
     requestsAttempted: { type: Number, default: 0 },
     requestsFailed:    { type: Number, default: 0 },
@@ -35,6 +42,7 @@ const fetchRunSchema = new mongoose.Schema({
   }],
   totalFetched: { type: Number, default: 0 },
   totalAdded:   { type: Number, default: 0 },
+  totalUpdated: { type: Number, default: 0 }, // Improvement 9 audit — sum of sources[].updated
   durationMs:   { type: Number, default: 0 },
 
   startedAt:  { type: Date },

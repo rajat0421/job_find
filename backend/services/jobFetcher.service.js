@@ -4,6 +4,7 @@ const lever = require('../platforms/lever');
 const ashby = require('../platforms/ashby');
 const FetchRun = require('../models/FetchRun');
 const { createCycleDeadline } = require('../services/fetchBudget.service');
+const { classifyError } = require('../services/httpClient.service');
 
 // Add new platforms here — each fetchJobs({ cycleDeadline }) returns
 // { fetched, added, ... }. The extra resilience fields (requestsAttempted/
@@ -52,7 +53,7 @@ const fetchAdzunaJobs = async () => {
     if (cycleDeadline.expired()) {
       console.warn(`[JobFetcher] Overall fetch-cycle budget exceeded — skipping ${name} entirely this cycle`);
       const outcome = sourceOutcome({ requestsAttempted: 0, requestsFailed: 0, threw: false, failures: [], budgetExceeded: 'cycle', skippedEntirely: true });
-      sources.push({ name, fetched: 0, added: 0, requestsAttempted: 0, requestsFailed: 0, retries: 0, failures: [], skipped: [], aborted: false, budgetExceeded: 'cycle', outcome });
+      sources.push({ name, fetched: 0, added: 0, updated: 0, requestsAttempted: 0, requestsFailed: 0, retries: 0, failures: [], skipped: [], aborted: false, budgetExceeded: 'cycle', outcome });
       errorSummary.push(`${name}: skipped entirely — overall fetch-cycle budget exceeded`);
       continue;
     }
@@ -63,12 +64,21 @@ const fetchAdzunaJobs = async () => {
       r = await fetcher.fetchJobs({ cycleDeadline });
     } catch (err) {
       threw = true;
+      // Full message only to server-side logs (an operator-only trust
+      // boundary). What goes into `errorSummary` is admin-API-visible (via
+      // getFetchHealth/analytics), so it's run through the same sanitized
+      // classifier every normal per-request failure already uses — a crash
+      // here is rare (a bug, not a classified HTTP failure) but Adzuna's
+      // request URLs carry credentials as query params, and some error types
+      // (e.g. network-level ones) can otherwise embed more than just a
+      // message. Never assume a raw error object is safe to expose.
       console.error(`[JobFetcher] ${name} error:`, err.message);
-      errorSummary.push(`${name}: crashed (${err.message?.slice(0, 120) || 'unknown error'})`);
+      errorSummary.push(`${name}: crashed (${classifyError(err)})`);
       r = {};
     }
 
     const added = r?.added || 0;
+    const updated = r?.updated || 0;
     const fetched = r?.fetched || 0;
     const requestsAttempted = r?.requestsAttempted || 0;
     const requestsFailed = r?.requestsFailed || 0;
@@ -79,7 +89,7 @@ const fetchAdzunaJobs = async () => {
     const budgetExceeded = r?.budgetExceeded || null;
 
     const outcome = sourceOutcome({ requestsAttempted, requestsFailed, threw, failures, budgetExceeded });
-    sources.push({ name, fetched, added, requestsAttempted, requestsFailed, retries, failures, skipped, aborted, budgetExceeded, outcome });
+    sources.push({ name, fetched, added, updated, requestsAttempted, requestsFailed, retries, failures, skipped, aborted, budgetExceeded, outcome });
 
     const budgetNote = budgetExceeded ? `, ${budgetExceeded} budget exceeded (${skipped.length} skipped)` : '';
     console.log(`[JobFetcher] ${name}: ${added} new / ${fetched} fetched (${outcome}${aborted ? ', rate-limit aborted' : ''}${budgetNote})`);
@@ -94,6 +104,7 @@ const fetchAdzunaJobs = async () => {
 
   const totalFetched = sources.reduce((s, x) => s + x.fetched, 0);
   const totalAdded = sources.reduce((s, x) => s + x.added, 0);
+  const totalUpdated = sources.reduce((s, x) => s + x.updated, 0);
 
   // Overall: 'failed' only if every single source failed outright — a run
   // that found zero jobs because every provider was unreachable must never
@@ -108,7 +119,7 @@ const fetchAdzunaJobs = async () => {
   const durationMs = Date.now() - start;
 
   try {
-    await FetchRun.create({ sources, totalFetched, totalAdded, durationMs, startedAt, finishedAt, outcome, errorSummary });
+    await FetchRun.create({ sources, totalFetched, totalAdded, totalUpdated, durationMs, startedAt, finishedAt, outcome, errorSummary });
   } catch (err) {
     console.error('[JobFetcher] Failed to record FetchRun:', err.message);
   }
@@ -119,7 +130,7 @@ const fetchAdzunaJobs = async () => {
     console.warn(`[JobFetcher] Fetch run partially failed. ${errorSummary.join(' | ')}`);
   }
 
-  return { sources, totalFetched, totalAdded, outcome };
+  return { sources, totalFetched, totalAdded, totalUpdated, outcome };
 };
 
 module.exports = { fetchAdzunaJobs };

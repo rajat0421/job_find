@@ -89,15 +89,24 @@ const observeJob = async ({ source, sourceBoard = null, sourceJobId = null, hash
       // blindly) is what keeps this cheap and correct.
       const oldFingerprint = computeJobFingerprint(byId);
       const newFingerprint = computeJobFingerprint({ ...fields, status: 'active' });
+      const contentChanged = oldFingerprint !== newFingerprint;
       const set = { ...fields, hash: storedHash, lastSeenAt: now, status: 'active', missingScans: 0 };
-      if (oldFingerprint !== newFingerprint) set.needsMatching = true;
+      if (contentChanged) set.needsMatching = true;
 
+      // `updated` (Improvement 9 audit fix) reuses this same fingerprint
+      // comparison the needsMatching flag already relied on — this is the
+      // "a scoring-relevant field actually changed" signal, not just "we saw
+      // this job again" (a routine re-observation with no content change
+      // reports updated:false, exactly like needsMatching staying false).
+      // Only true if the write actually succeeded — a failed write updated
+      // nothing, regardless of what the comparison found.
       try {
         await Job.updateOne({ _id: byId._id }, { $set: set });
       } catch (err) {
         console.warn(`[JobLifecycle] Failed to update observed job ${byId._id}:`, err.message);
+        return { created: false, updated: false };
       }
-      return { created: false };
+      return { created: false, updated: contentChanged };
     }
   }
 
@@ -120,7 +129,7 @@ const observeJob = async ({ source, sourceBoard = null, sourceJobId = null, hash
     // never reset a counter another source's own sweep is relying on, and
     // must never override a closure decision an authoritative board already made.
     await Job.updateOne({ _id: byHash._id }, { $set: { lastSeenAt: now } });
-    return { created: false };
+    return { created: false, updated: false }; // a liveness confirmation only — no content field is ever touched here
   }
 
   const storedHash = await resolveStorableHash({ hash, excludeId: null, source, sourceBoard, sourceJobId });
@@ -136,12 +145,12 @@ const observeJob = async ({ source, sourceBoard = null, sourceJobId = null, hash
       status: 'active',
       missingScans: 0,
     });
-    return { created: true };
+    return { created: true, updated: false };
   } catch (err) {
     // Race with a concurrent fetch inserting the same hash first — the same
     // tolerance the old hash-only flow always relied on.
     console.warn(`[JobLifecycle] Failed to create observed job (hash=${hash}):`, err.message);
-    return { created: false };
+    return { created: false, updated: false };
   }
 };
 

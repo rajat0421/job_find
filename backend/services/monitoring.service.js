@@ -31,6 +31,16 @@ const THRESHOLDS = {
   // No successfully delivered digest at all in this long is worth a look —
   // generous enough to tolerate a quiet period with no due users.
   EMAIL_NO_SUCCESS_WARN_MS: Number(process.env.MONITOR_EMAIL_NO_SUCCESS_WARN_MS) || 24 * 60 * 60 * 1000,
+  // Fetch runs hourly (`0 * * * *`). If the MOST RECENT FetchRun is older
+  // than this, the pipeline may not be executing at all (scheduler crashed,
+  // process never restarted, cron silently stopped firing) — a fundamentally
+  // different failure mode than "the last run failed", which the stored
+  // `outcome` field can never reveal on its own, since outcome only
+  // describes what happened the last time something actually ran. 3h
+  // tolerates one missed tick without a false alarm.
+  FETCH_STALE_WARN_MS: Number(process.env.MONITOR_FETCH_STALE_WARN_MS) || 3 * 60 * 60 * 1000,
+  // Match runs hourly at :15 — same reasoning as FETCH_STALE_WARN_MS.
+  MATCH_STALE_WARN_MS: Number(process.env.MONITOR_MATCH_STALE_WARN_MS) || 3 * 60 * 60 * 1000,
 };
 
 // How many recent FetchRun documents to inspect for streak calculations.
@@ -116,7 +126,21 @@ const getFetchHealth = async () => {
   const failingBoards = await getFailingBoards();
   const degraded = providers.filter((p) => p.consecutiveFailures >= THRESHOLDS.FETCH_CONSECUTIVE_FAILURES);
 
+  // Audit finding (Improvement 9): previously nothing compared "when did the
+  // fetch pipeline last actually run" against "how long ago is too long" — a
+  // dead scheduler would keep showing whatever `outcome` its last real run
+  // happened to have (often 'success'), forever, with no warning at all.
+  const ageMs = Date.now() - new Date(latest.createdAt).getTime();
+  const stale = ageMs >= THRESHOLDS.FETCH_STALE_WARN_MS;
+
   const warnings = [];
+  if (stale) {
+    warnings.push({
+      code: 'fetch_stale',
+      severity: 'warning',
+      message: `Most recent fetch run was ${Math.round(ageMs / 3600000)}h ago — the fetch pipeline may not be running`,
+    });
+  }
   if (degraded.length) {
     warnings.push({
       code: 'fetch_provider_failing',
@@ -141,12 +165,14 @@ const getFetchHealth = async () => {
 
   return {
     status: latest.outcome,
+    stale,
     lastRunAt: latest.createdAt,
     startedAt: latest.startedAt,
     finishedAt: latest.finishedAt,
     durationMs: latest.durationMs,
     totalFetched: latest.totalFetched,
     totalAdded: latest.totalAdded,
+    totalUpdated: latest.totalUpdated || 0,
     errorSummary: latest.errorSummary || [],
     providers,
     failingBoards,
@@ -188,8 +214,23 @@ const getMatchHealth = async ({ pendingBacklog, versionBacklog } = {}) => {
     warnings.push({ code: 'match_run_failed', severity: 'error', message: 'Most recent match run failed' });
   }
 
+  // Same audit finding as getFetchHealth: a dead match cron would otherwise
+  // keep showing its last real outcome (often 'success') forever, with
+  // nothing distinguishing "healthy and current" from "stopped running
+  // hours ago".
+  const ageMs = Date.now() - new Date(latestRun.createdAt).getTime();
+  const stale = ageMs >= THRESHOLDS.MATCH_STALE_WARN_MS;
+  if (stale) {
+    warnings.push({
+      code: 'match_stale',
+      severity: 'warning',
+      message: `Most recent match run was ${Math.round(ageMs / 3600000)}h ago — the matching pipeline may not be running`,
+    });
+  }
+
   return {
     status: latestRun.outcome,
+    stale,
     lastRunAt: latestRun.createdAt,
     startedAt: latestRun.startedAt,
     finishedAt: latestRun.finishedAt,

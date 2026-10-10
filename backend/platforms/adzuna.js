@@ -29,6 +29,7 @@ const CONSECUTIVE_RATE_LIMIT_ABORT_THRESHOLD = Number(process.env.ADZUNA_RATE_LI
 
 const fetchForCategory = async (appId, appKey, what, stats, deadlines) => {
   let newCount = 0;
+  let updatedCount = 0;
   let fetched = 0;
   let failureReason = null;
   for (let page = 1; page <= MAX_PAGES; page++) {
@@ -60,7 +61,7 @@ const fetchForCategory = async (appId, appKey, what, stats, deadlines) => {
         const sourceJobId = j.id != null ? String(j.id) : null;
         const hash = generateJobHash(title, company, location);
 
-        const { created } = await observeJob({
+        const { created, updated } = await observeJob({
           source: 'adzuna',
           sourceBoard: null,
           sourceJobId,
@@ -75,6 +76,7 @@ const fetchForCategory = async (appId, appKey, what, stats, deadlines) => {
           },
         });
         if (created) newCount++;
+        else if (updated) updatedCount++;
       }
     } catch (err) {
       failureReason = classifyError(err);
@@ -83,7 +85,7 @@ const fetchForCategory = async (appId, appKey, what, stats, deadlines) => {
       break;
     }
   }
-  return { added: newCount, fetched, failureReason };
+  return { added: newCount, updated: updatedCount, fetched, failureReason };
 };
 
 // `cycleDeadline` (from fetchBudget.service.js, shared across all four
@@ -109,6 +111,7 @@ const fetchJobs = async ({ cycleDeadline } = {}) => {
   let budgetExceeded = null; // time-budget cutoff
 
   let totalNew = 0;
+  let totalUpdated = 0;
   let totalFetched = 0;
   for (let i = 0; i < CATEGORIES.length; i++) {
     const what = CATEGORIES[i];
@@ -125,9 +128,10 @@ const fetchJobs = async ({ cycleDeadline } = {}) => {
       break;
     }
 
-    const { added, fetched, failureReason } = await fetchForCategory(appId, appKey, what, stats, deadlines);
+    const { added, updated, fetched, failureReason } = await fetchForCategory(appId, appKey, what, stats, deadlines);
     if (added > 0) console.log(`[Adzuna] "${what}" → ${added} new jobs`);
     totalNew += added;
+    totalUpdated += updated;
     totalFetched += fetched;
 
     if (failureReason) {
@@ -146,6 +150,7 @@ const fetchJobs = async ({ cycleDeadline } = {}) => {
   console.log(`[Adzuna] Done — ${totalNew} new / ${totalFetched} fetched across ${CATEGORIES.length} categories${aborted ? ' (rate-limit aborted)' : ''}${budgetExceeded ? ' (time-budget aborted)' : ''}`);
   return {
     added: totalNew,
+    updated: totalUpdated,
     fetched: totalFetched,
     aborted,
     budgetExceeded,

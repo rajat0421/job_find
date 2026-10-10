@@ -67,6 +67,32 @@ describe('getFetchHealth', () => {
     expect(health.status).toBe('failed');
   });
 
+  // Improvement 9 audit finding: nothing previously compared "how long ago
+  // was the last run" against the hourly cadence — a dead scheduler would
+  // show its last real outcome forever with no warning.
+  describe('staleness (audit fix)', () => {
+    test('a recent successful run is not flagged stale', async () => {
+      const recent = { _id: 'r1', createdAt: new Date(), outcome: 'success', totalFetched: 5, totalAdded: 1, durationMs: 100, sources: [] };
+      FetchRun.find.mockReturnValue(buildQuery([recent]));
+
+      const health = await getFetchHealth();
+
+      expect(health.stale).toBe(false);
+      expect(health.warnings.some((w) => w.code === 'fetch_stale')).toBe(false);
+    });
+
+    test('a run from well beyond the hourly cadence is flagged stale even though its own outcome was "success"', async () => {
+      const longAgo = { _id: 'r1', createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000), outcome: 'success', totalFetched: 5, totalAdded: 1, durationMs: 100, sources: [] };
+      FetchRun.find.mockReturnValue(buildQuery([longAgo]));
+
+      const health = await getFetchHealth();
+
+      expect(health.status).toBe('success'); // the stored outcome itself is untouched/not overwritten
+      expect(health.stale).toBe(true);
+      expect(health.warnings.some((w) => w.code === 'fetch_stale')).toBe(true);
+    });
+  });
+
   test('consecutive provider failures are counted as a streak from the most recent run backwards', async () => {
     const runs = [
       { createdAt: new Date(3), outcome: 'partial', sources: [{ name: 'Lever', outcome: 'failed' }] },
@@ -141,6 +167,23 @@ describe('getMatchHealth', () => {
     const health = await getMatchHealth();
     expect(health.status).toBe('failed');
     expect(health.warnings).toContainEqual(expect.objectContaining({ code: 'match_run_failed', severity: 'error' }));
+  });
+
+  // Improvement 9 audit finding — same gap as getFetchHealth's staleness check.
+  describe('staleness (audit fix)', () => {
+    test('a recent successful run is not flagged stale', async () => {
+      MatchRun.findOne.mockReturnValue(buildQuery({ outcome: 'success', createdAt: new Date(), created: 1, updated: 0, errorCount: 0, pendingMarkedProcessed: true }));
+      const health = await getMatchHealth();
+      expect(health.stale).toBe(false);
+    });
+
+    test('a run from well beyond the hourly cadence is flagged stale even though its own outcome was "success"', async () => {
+      MatchRun.findOne.mockReturnValue(buildQuery({ outcome: 'success', createdAt: new Date(Date.now() - 5 * 60 * 60 * 1000), created: 1, updated: 0, errorCount: 0, pendingMarkedProcessed: true }));
+      const health = await getMatchHealth();
+      expect(health.status).toBe('success');
+      expect(health.stale).toBe(true);
+      expect(health.warnings.some((w) => w.code === 'match_stale')).toBe(true);
+    });
   });
 
   test('warns when the oldest pending job has aged past the configured threshold', async () => {

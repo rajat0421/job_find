@@ -16,9 +16,18 @@ export default function AdminAnalytics() {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Diagnostics is fetched independently of the main analytics payload
+  // (Improvement 9 audit fix — it previously existed on the backend but was
+  // never called from this page at all). Its own failure must never block or
+  // blank out the rest of the page, which already loaded fine from
+  // /admin/analytics — hence a separate state/request rather than bundling it
+  // into the main `data` fetch.
+  const [diagnostics, setDiagnostics] = useState(null);
+  const [diagnosticsFailed, setDiagnosticsFailed] = useState(false);
 
   useEffect(() => {
     adminApi.get('/admin/analytics').then((r) => setData(r.data)).finally(() => setLoading(false));
+    adminApi.get('/admin/diagnostics').then((r) => setDiagnostics(r.data)).catch(() => setDiagnosticsFailed(true));
   }, []);
 
   const navBtn = (label, active, onClick) => (
@@ -70,7 +79,7 @@ export default function AdminAnalytics() {
     return `${Math.round(hours / 24)}d ago`;
   };
 
-  const OpsCard = ({ label, indicator, status, lastAt, children }) => {
+  const OpsCard = ({ label, indicator, status, lastAt, stale, children }) => {
     const style = indicatorStyle(indicator);
     return (
       <div className="bg-[#12121c] border border-white/10 rounded-xl p-5">
@@ -82,7 +91,12 @@ export default function AdminAnalytics() {
           </span>
         </div>
         <p className="text-lg font-bold text-slate-100 capitalize">{status || 'unknown'}</p>
-        <p className="text-xs text-slate-600 mt-1">{lastAt ? `Last: ${relativeAge(lastAt)}` : 'No runs recorded yet'}</p>
+        <p className="text-xs text-slate-600 mt-1">
+          {lastAt ? `Last: ${relativeAge(lastAt)}` : 'No runs recorded yet'}
+          {/* A run can report a healthy outcome and still be stale (Improvement 9) —
+              the pipeline may simply have stopped executing since then. */}
+          {stale && <span className="text-yellow-400 ml-2">⚠ stale</span>}
+        </p>
         {children}
       </div>
     );
@@ -98,10 +112,10 @@ export default function AdminAnalytics() {
           <section>
             <h2 className="text-sm font-semibold text-slate-300 mb-3">Operational overview</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-              <OpsCard label="Fetch" indicator={ops.fetch.indicator} status={ops.fetch.status} lastAt={ops.fetch.lastRunAt}>
-                <p className="text-xs text-slate-500 mt-2">{ops.fetch.totalAdded ?? 0} added this run</p>
+              <OpsCard label="Fetch" indicator={ops.fetch.indicator} status={ops.fetch.status} lastAt={ops.fetch.lastRunAt} stale={ops.fetch.stale}>
+                <p className="text-xs text-slate-500 mt-2">{ops.fetch.totalAdded ?? 0} added · {ops.fetch.totalUpdated ?? 0} updated this run</p>
               </OpsCard>
-              <OpsCard label="Matching" indicator={ops.match.indicator} status={ops.match.status} lastAt={ops.match.lastRunAt}>
+              <OpsCard label="Matching" indicator={ops.match.indicator} status={ops.match.status} lastAt={ops.match.lastRunAt} stale={ops.match.stale}>
                 <p className="text-xs text-slate-500 mt-2">{ops.jobs.needsMatching} job(s) pending · {ops.jobs.matcherVersionBacklog} on old version</p>
               </OpsCard>
               <OpsCard label="Email" indicator={ops.email.indicator} status={ops.email.status} lastAt={ops.email.lastSuccessAt}>
@@ -129,6 +143,29 @@ export default function AdminAnalytics() {
                 ))}
               </div>
             )}
+
+            {/* System diagnostics — fetched separately from /admin/diagnostics
+                (Improvement 9 audit fix: this endpoint existed and was tested,
+                but was never actually surfaced on this page). Its own failure
+                is isolated here and never blanks out the rest of the page. */}
+            <div className="bg-[#12121c] border border-white/10 rounded-xl p-4 mt-4 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs">
+              <span className="text-slate-500 font-medium uppercase tracking-wide">System</span>
+              {diagnosticsFailed ? (
+                <span className="text-yellow-400">Diagnostics unavailable right now — rest of this page is unaffected</span>
+              ) : !diagnostics ? (
+                <span className="text-slate-600">Loading…</span>
+              ) : (
+                <>
+                  <span className="text-slate-400">Role: <span className="text-slate-200">{diagnostics.processRole}</span></span>
+                  <span className="text-slate-400">Mongo: <span className={diagnostics.mongoConnected ? 'text-green-400' : 'text-red-400'}>{diagnostics.mongoConnected ? 'connected' : 'disconnected'}</span></span>
+                  <span className="text-slate-400">
+                    Scheduler: <span className={diagnostics.schedulerRegistered ? 'text-green-400' : 'text-slate-500'}>
+                      {diagnostics.schedulerExpectedInThisProcess ? (diagnostics.schedulerRegistered ? 'registered' : 'not registered') : 'n/a (api-only process)'}
+                    </span>
+                  </span>
+                </>
+              )}
+            </div>
           </section>
         )}
 

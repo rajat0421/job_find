@@ -978,8 +978,12 @@ const getDiagnostics = async (_req, res) => {
       // not a failure.
       schedulerRegistered: schedulerExpectedInThisProcess ? isSchedulerStarted() : false,
       recentWork: {
-        fetch: { status: fetch.status, lastRunAt: fetch.lastRunAt || null },
-        match: { status: match.status, lastRunAt: match.lastRunAt || null },
+        // `stale` (Improvement 9 audit fix) — see monitoring.service.js:
+        // registration/a past successful outcome alone never proves the
+        // pipeline is STILL running; this compares the last run's age
+        // against the expected hourly cadence.
+        fetch: { status: fetch.status, lastRunAt: fetch.lastRunAt || null, stale: fetch.stale ?? null },
+        match: { status: match.status, lastRunAt: match.lastRunAt || null, stale: match.stale ?? null },
         email: { lastSuccessAt: email.lastSuccessAt || null },
       },
     });

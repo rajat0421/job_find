@@ -68,6 +68,43 @@ test('all providers succeeding is reported as a success outcome', async () => {
   expect(saved.sources.every((s) => s.outcome === 'success')).toBe(true);
 });
 
+// Improvement 9 audit: distinguishing a successful-but-empty run from a
+// failure is the single most important classification this file makes —
+// confirms it explicitly, at the outcome layer, not just inferred from the
+// absence of a separate negative test.
+test('a provider that completes every request successfully but finds zero jobs is still reported as success, never as a failure', async () => {
+  const zeroButHealthy = ok(0, 0); // added:0, fetched:0, but 1 attempted request, 0 failed
+  adzuna.fetchJobs.mockResolvedValue(zeroButHealthy);
+  greenhouse.fetchJobs.mockResolvedValue(zeroButHealthy);
+  lever.fetchJobs.mockResolvedValue(zeroButHealthy);
+  ashby.fetchJobs.mockResolvedValue(zeroButHealthy);
+
+  const result = await fetchAdzunaJobs();
+
+  expect(result.outcome).toBe('success');
+  expect(result.totalAdded).toBe(0);
+  const saved = FetchRun.create.mock.calls[0][0];
+  expect(saved.sources.every((s) => s.outcome === 'success')).toBe(true);
+});
+
+test('an uncaught platform-level exception is sanitized before being recorded — never the raw error message', async () => {
+  // A raw axios-style network error whose .message could, in principle,
+  // reflect internal details — must be classified, not passed through.
+  const err = new Error('connect ECONNREFUSED 10.0.0.5:443 with secret-token-in-url');
+  adzuna.fetchJobs.mockRejectedValue(err);
+  greenhouse.fetchJobs.mockResolvedValue(ok());
+  lever.fetchJobs.mockResolvedValue(ok());
+  ashby.fetchJobs.mockResolvedValue(ok());
+
+  await fetchAdzunaJobs();
+
+  const saved = FetchRun.create.mock.calls[0][0];
+  const adzunaLine = saved.errorSummary.find((line) => line.startsWith('Adzuna'));
+  expect(adzunaLine).toBeDefined();
+  expect(adzunaLine).not.toContain('secret-token-in-url');
+  expect(adzunaLine).not.toContain('10.0.0.5');
+});
+
 test('one provider totally failing (all its requests failed) is reported as partial, not success', async () => {
   adzuna.fetchJobs.mockResolvedValue(totalFailure());
   greenhouse.fetchJobs.mockResolvedValue(ok());

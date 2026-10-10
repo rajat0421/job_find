@@ -33,6 +33,7 @@ const Company = require('../models/Company');
 // adapter also tracks its own per-provider budget independently.
 const fetchJobs = async ({ cycleDeadline } = {}) => {
   let newCount = 0;
+  let updatedCount = 0;
   let totalFetched = 0;
   const companies = await getCompanies('greenhouse');
 
@@ -91,7 +92,7 @@ const fetchJobs = async ({ cycleDeadline } = {}) => {
         const location = j.location?.name || '';
         const hash = generateJobHash(title, company, location);
 
-        const { created } = await observeJob({
+        const { created, updated } = await observeJob({
           source: 'greenhouse',
           sourceBoard: token,
           sourceJobId,
@@ -108,6 +109,7 @@ const fetchJobs = async ({ cycleDeadline } = {}) => {
           },
         });
         if (created) newCount++;
+        else if (updated) updatedCount++;
       }
 
       if (_id) await Company.updateOne({ _id }, { lastFetchedAt: new Date(), lastJobCount: fetched });
@@ -136,6 +138,7 @@ const fetchJobs = async ({ cycleDeadline } = {}) => {
 
   return {
     added: newCount,
+    updated: updatedCount,
     fetched: totalFetched,
     companiesAttempted: attemptedCount,
     companiesFailed,

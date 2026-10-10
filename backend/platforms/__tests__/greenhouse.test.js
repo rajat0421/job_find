@@ -95,14 +95,34 @@ test('a reappearing posting resets its missing-scan count back to active', async
 
 test('a changed title/location for a tracked posting updates in place, not a duplicate', async () => {
   axios.get.mockResolvedValueOnce({ data: { jobs: [ghJob('1', 'Engineer', 'Remote')] } });
-  await fetchJobs();
+  const first = await fetchJobs();
 
   axios.get.mockResolvedValueOnce({ data: { jobs: [ghJob('1', 'Senior Engineer', 'Bangalore')] } });
-  await fetchJobs();
+  const second = await fetchJobs();
 
   expect(Job.__store).toHaveLength(1);
   expect(Job.__store[0].title).toBe('Senior Engineer');
   expect(Job.__store[0].location).toBe('Bangalore');
+
+  // Improvement 9 audit: the `updated` count (previously never surfaced from
+  // observeJob/fetchJobs at all) should reflect the second scan's real
+  // content change, while the first scan's return value correctly reports
+  // it as an insertion (added), not an update.
+  expect(first.added).toBe(1);
+  expect(first.updated).toBe(0);
+  expect(second.added).toBe(0);
+  expect(second.updated).toBe(1);
+});
+
+test('a re-scan with no content change at all reports neither added nor updated for that posting', async () => {
+  axios.get.mockResolvedValueOnce({ data: { jobs: [ghJob('1', 'Engineer', 'Remote')] } });
+  await fetchJobs();
+
+  axios.get.mockResolvedValueOnce({ data: { jobs: [ghJob('1', 'Engineer', 'Remote')] } }); // identical content
+  const second = await fetchJobs();
+
+  expect(second.added).toBe(0);
+  expect(second.updated).toBe(0);
 });
 
 describe('Improvement 4 (final) — per-provider and cycle time budgets', () => {

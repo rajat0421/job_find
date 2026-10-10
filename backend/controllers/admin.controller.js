@@ -7,7 +7,7 @@ const RequestLog = require('../models/RequestLog');
 const EmailLog = require('../models/EmailLog');
 const Config = require('../models/Config');
 const Company = require('../models/Company');
-const { scoreJob, scoreJobWithBreakdown, matchJobsForAllUsers } = require('../services/jobMatcher.service');
+const { scoreJob, scoreJobDetailed, scoreJobWithBreakdown, matchJobsForAllUsers, computeUserFingerprint, computeJobFingerprint, MATCHER_VERSION } = require('../services/jobMatcher.service');
 const { getCompanies } = require('../services/companies.service');
 const { getEmailThreshold } = require('../services/config.service');
 
@@ -386,64 +386,70 @@ const fixGreenhouseDescriptions = async (_req, res) => {
       }
     }
 
-    // Re-score all UserJob records that point to greenhouse jobs
+    // Re-score all UserJob records that point to greenhouse jobs. Never
+    // deletes — a record that now scores 0 is simply updated to 0 and left for
+    // the existing score-threshold filters (listings, email digest) to
+    // exclude, preserving any saved/applied/emailed history on it intact.
+    // Orphaned records (job hard-deleted) are left untouched too — nothing to
+    // rescore them against, and deleting isn't this endpoint's job.
     const ghJobIds = ghJobs.map((j) => j._id);
     const userJobs = await UserJob.find({ jobId: { $in: ghJobIds } }).populate('userId').populate('jobId');
 
-    const toDelete = [];
     const ops = [];
+    let skippedOrphaned = 0;
     for (const uj of userJobs) {
-      if (!uj.jobId || !uj.userId) { toDelete.push(uj._id); continue; }
-      const newScore = scoreJob(uj.userId, uj.jobId);
-      if (newScore === 0) {
-        toDelete.push(uj._id);
-      } else if (newScore !== uj.score) {
-        ops.push({ updateOne: { filter: { _id: uj._id }, update: { $set: { score: newScore } } } });
-      }
+      if (!uj.jobId || !uj.userId) { skippedOrphaned++; continue; }
+      const { score, matchedSkills, matchedRole, reasons } = scoreJobDetailed(uj.userId, uj.jobId);
+      const userFingerprint = computeUserFingerprint(uj.userId);
+      const jobFingerprint = computeJobFingerprint(uj.jobId);
+      ops.push({
+        updateOne: {
+          filter: { _id: uj._id },
+          update: { $set: { score, matchedSkills, matchedRole, reasons, matcherVersion: MATCHER_VERSION, userFingerprint, jobFingerprint } },
+        },
+      });
     }
 
     if (ops.length) await UserJob.bulkWrite(ops);
-    if (toDelete.length) await UserJob.deleteMany({ _id: { $in: toDelete } });
 
-    res.json({ message: 'Done', jobsFixed, rescored: ops.length, removed: toDelete.length });
+    res.json({ message: 'Done', jobsFixed, rescored: ops.length, skippedOrphaned });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
 };
 
 // POST /api/admin/rescore-all
-// Re-scores ALL UserJob records across all users using the current scoring algorithm
-// Removes records that now score 0 (no skill match)
+// Re-scores ALL UserJob records across all users using the current scoring algorithm.
+// Never deletes a record, even one that now scores 0 — see fixGreenhouseDescriptions
+// above for why: a saved/applied record's history must survive a rescore.
 const rescoreAllUsers = async (_req, res) => {
   try {
     const users = await User.find({ isOnboarded: true, isEmailVerified: true });
     let totalRescored = 0;
-    let totalRemoved = 0;
+    let totalSkippedOrphaned = 0;
 
     for (const user of users) {
       const userJobs = await UserJob.find({ userId: user._id }).populate('jobId');
-      const toDelete = [];
       const ops = [];
+      const userFingerprint = computeUserFingerprint(user);
 
       for (const uj of userJobs) {
-        if (!uj.jobId) { toDelete.push(uj._id); continue; }
-        const newScore = scoreJob(user, uj.jobId);
-        if (newScore === 0) {
-          toDelete.push(uj._id);
-        } else if (newScore !== uj.score) {
-          ops.push({ updateOne: { filter: { _id: uj._id }, update: { $set: { score: newScore } } } });
-          totalRescored++;
-        }
+        if (!uj.jobId) { totalSkippedOrphaned++; continue; }
+        const { score, matchedSkills, matchedRole, reasons } = scoreJobDetailed(user, uj.jobId);
+        const jobFingerprint = computeJobFingerprint(uj.jobId);
+        ops.push({
+          updateOne: {
+            filter: { _id: uj._id },
+            update: { $set: { score, matchedSkills, matchedRole, reasons, matcherVersion: MATCHER_VERSION, userFingerprint, jobFingerprint } },
+          },
+        });
+        totalRescored++;
       }
 
       if (ops.length) await UserJob.bulkWrite(ops);
-      if (toDelete.length) {
-        await UserJob.deleteMany({ _id: { $in: toDelete } });
-        totalRemoved += toDelete.length;
-      }
     }
 
-    res.json({ message: 'Done', rescored: totalRescored, removed: totalRemoved });
+    res.json({ message: 'Done', rescored: totalRescored, skippedOrphaned: totalSkippedOrphaned });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

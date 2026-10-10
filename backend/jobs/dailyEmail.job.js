@@ -5,6 +5,7 @@ const EmailLog = require('../models/EmailLog');
 const Config = require('../models/Config');
 const { sendJobDigestEmail, sendAdminDigestCopy } = require('../services/email.service');
 const { getEmailThreshold } = require('../services/config.service');
+const { MATCHER_VERSION, computeUserFingerprint } = require('../services/jobMatcher.service');
 
 const getISTHour = () => {
   // IST = UTC + 5:30 — avoid toLocaleString which returns "24" at midnight in some runtimes
@@ -63,15 +64,39 @@ const sendDigest = async ({ force = false } = {}) => {
     // critically, never gets marked emailed:true just because it was excluded.
     // It simply stays emailed:false indefinitely (it will never be emailed now,
     // which is the intended outcome, not a bug to special-case further).
+    //
+    // matcherVersion filter: never send a score computed under an older/
+    // obsolete scoring algorithm — a record not yet rescored under the current
+    // MATCHER_VERSION (e.g. mid-way through the bounded version sweep after an
+    // algorithm change) is excluded until that recalculation actually happens,
+    // rather than emailing a potentially-obsolete score. It becomes eligible
+    // again automatically once the sweep (or a per-user trigger) refreshes it.
+    //
+    // needsMatching filter: the attached job itself may have a content change
+    // still awaiting reprocessing by the pending-batch sweep — until that
+    // happens, this record's score reflects the job's PREVIOUS content, so it's
+    // held back the same way.
+    //
+    // userFingerprint filter: a profile edit triggers matchJobsForUser/
+    // rescoreUserMatches fire-and-forget (see user.controller.js's
+    // updateProfile) — it is not guaranteed to finish before the next email
+    // tick. matcherVersion alone can't catch this: the record was already
+    // scored under the current algorithm, just against the user's PREVIOUS
+    // profile. Comparing against the user's current fingerprint (already in
+    // memory — no extra query) catches that race without scanning anything
+    // beyond this same bounded, already-thresholded candidate list.
+    const currentUserFingerprint = computeUserFingerprint(user);
     const newJobs = (await UserJob.find({
       userId: user._id,
       emailed: false,
       score: { $gte: threshold },
+      matcherVersion: MATCHER_VERSION,
     })
       .sort({ score: -1 })
       .limit(10)
       .populate('jobId'))
-      .filter((uj) => uj.jobId && !INACTIVE.includes(uj.jobId.status));
+      .filter((uj) => uj.jobId && !INACTIVE.includes(uj.jobId.status) && !uj.jobId.needsMatching
+        && uj.userFingerprint === currentUserFingerprint);
 
     if (!newJobs.length) {
       const [totalMatched, totalUnread] = await Promise.all([

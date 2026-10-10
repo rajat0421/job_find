@@ -55,6 +55,14 @@ const updateProfile = async (req, res) => {
 
     await User.updateOne({ _id: req.user.id }, { $set: update });
     res.json({ message: 'Profile updated' });
+
+    // Fire-and-forget: refresh this user's existing matches if anything
+    // scoring-relevant changed, and pick up any new matches too. Cheap no-op
+    // when nothing relevant changed — matchJobsForUser only rescores pairs
+    // whose stored fingerprint no longer matches the current profile.
+    matchJobsForUser(req.user.id).catch((err) =>
+      console.error('[Matcher] Profile-update match failed:', err.message)
+    );
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

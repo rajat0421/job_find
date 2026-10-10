@@ -17,9 +17,11 @@ const EmailLog = require('../../models/EmailLog');
 const Config = require('../../models/Config');
 const { sendJobDigestEmail } = require('../../services/email.service');
 const { getEmailThreshold } = require('../../services/config.service');
+const { computeUserFingerprint } = require('../../services/jobMatcher.service');
 const { sendDigest } = require('../dailyEmail.job');
 
 const DUE_USER = { _id: 'u1', email: 'a@x.com', name: 'A' };
+const DUE_USER_FINGERPRINT = computeUserFingerprint(DUE_USER);
 
 const buildUserJobQuery = (resolvedJobs) => {
   const query = {};
@@ -37,7 +39,7 @@ beforeEach(() => {
 });
 
 test('closed/expired jobs are dropped from the digest selection; the active one still sends', async () => {
-  const active = { _id: 'uj1', jobId: { title: 'Open role' }, score: 90 };
+  const active = { _id: 'uj1', jobId: { title: 'Open role' }, score: 90, userFingerprint: DUE_USER_FINGERPRINT };
   const closed = { _id: 'uj2', jobId: { title: 'Closed role', status: 'closed' }, score: 85 };
   const expired = { _id: 'uj3', jobId: { title: 'Expired role', status: 'expired' }, score: 80 };
   UserJob.find.mockReturnValue(buildUserJobQuery([active, closed, expired]));
@@ -52,7 +54,7 @@ test('closed/expired jobs are dropped from the digest selection; the active one 
 });
 
 test('a closed/expired UserJob is never marked emailed, even though it was excluded this cycle', async () => {
-  const active = { _id: 'uj1', jobId: { title: 'Open role' }, score: 90 };
+  const active = { _id: 'uj1', jobId: { title: 'Open role' }, score: 90, userFingerprint: DUE_USER_FINGERPRINT };
   const closed = { _id: 'uj2', jobId: { title: 'Closed role', status: 'closed' }, score: 85 };
   UserJob.find.mockReturnValue(buildUserJobQuery([active, closed]));
   sendJobDigestEmail.mockResolvedValue();

@@ -1,6 +1,16 @@
+const crypto = require('crypto');
 const User = require('../models/User');
 const Job = require('../models/Job');
 const UserJob = require('../models/UserJob');
+
+// Bump this ONLY when scoreJobDetailed's actual scoring logic changes in a way
+// that would produce a different score/reasons for the SAME user+job inputs —
+// e.g. a weight changes, a new scoring dimension is added, role/skill matching
+// logic changes. Do NOT bump for refactors, comments, logging, or unrelated
+// code changes that don't alter scoring output. Bumping it marks every
+// existing UserJob stale, which the bounded version sweep below then works
+// through gradually — so treat it as a meaningful, infrequent event.
+const MATCHER_VERSION = 1;
 
 // Skill "families": keys are normalized skill names (lowercase, no spaces/dots/hyphens).
 // Values are lowercase substrings to look for in the job text — including a skill's
@@ -251,10 +261,27 @@ const scoreJobDetailed = (user, job) => {
 const scoreJob = (user, job) => scoreJobDetailed(user, job).score;
 
 // How many of the most-recent jobs to score each user against per run.
-// _matchJobsForUser skips jobs a user already has a UserJob for, so this is a
-// backfill: it guarantees eventual coverage even if a cron run is missed (Render
-// spin-down) or a user onboarded after a job's original fetch window passed.
+// _matchJobsForUser (insert-only mode) skips jobs a user already has a UserJob
+// for, so this is a backfill: it guarantees eventual coverage even if a cron
+// run is missed (Render spin-down) or a user onboarded after a job's original
+// fetch window passed. Kept as-is — see Improvement 5's report for why this
+// policy wasn't changed, and why it's no longer the *only* coverage path.
 const MATCH_WINDOW = 2000;
+
+// Bounded batch of jobs flagged needsMatching (brand new, or had a
+// scoring-relevant field change) to process PER CRON TICK, regardless of how
+// large the backlog is. This is what gives eventual coverage to jobs outside
+// MATCH_WINDOW and to jobs whose content changed after their original fetch —
+// without ever scanning the whole Job collection in one pass. A job is only
+// marked processed (needsMatching:false) after matching has run for it against
+// every currently onboarded user in this same tick — if the tick throws partway
+// through, nothing gets marked, so the same jobs are retried next cycle.
+const PENDING_BATCH_SIZE = 200;
+
+// Bounded batch of UserJob records to bring up to the current MATCHER_VERSION
+// per cron tick. Exists so a version bump (which makes every existing record
+// stale at once) is worked through gradually rather than in one unbounded pass.
+const VERSION_SWEEP_BATCH_SIZE = 300;
 
 // Excludes closed/expired postings from new matches. Written as $nin rather than
 // requiring status:'active' so it's safe against pre-existing Job documents that
@@ -263,47 +290,220 @@ const MATCH_WINDOW = 2000;
 // also matches documents where the field doesn't exist at all, so no backfill
 // migration is required for this filter to behave correctly on old records.
 const ACTIVE_JOB_FILTER = { status: { $nin: ['closed', 'expired'] } };
+// Mirrors ACTIVE_JOB_FILTER's $ne/$nin-for-legacy-compatibility pattern: matches
+// true AND documents missing the field entirely (pre-migration jobs), so no
+// backfill is needed for this filter to behave correctly on old records either.
+const PENDING_JOB_FILTER = { needsMatching: { $ne: false } };
+
+// Order-independent, stable fingerprint of the scoring-relevant USER fields —
+// exactly the fields scoreJobDetailed actually reads. Deliberately excludes
+// name, email, qualification, email schedule settings, lastEmailedAt, etc. —
+// changing those must never be treated as invalidating an existing score.
+const computeUserFingerprint = (user) => {
+  const payload = JSON.stringify({
+    desiredRoles: [...(user.desiredRoles || [])].sort(),
+    skills: [...(user.skills || [])].sort(),
+    experience: user.experience ?? null,
+    locations: [...(user.locations || [])].sort(),
+    salary: user.salary ?? null,
+    remotePreference: user.remotePreference || 'any',
+  });
+  return crypto.createHash('md5').update(payload).digest('hex');
+};
+
+// Stable fingerprint of the scoring-relevant JOB fields — exactly the fields
+// scoreJobDetailed actually reads, plus status (an inactive job is a different
+// scoring input in the sense that it should never be matched at all).
+// Deliberately excludes company, applyLink, postedAt, lastSeenAt, sourceJobId,
+// missingScans, etc. — a fetch cycle merely re-confirming a job is still alive
+// must never look like a scoring-relevant change.
+const computeJobFingerprint = (job) => {
+  const payload = JSON.stringify({
+    title: job.title || '',
+    description: job.description || '',
+    location: job.location || '',
+    workplaceType: job.workplaceType || null,
+    salaryMin: job.salaryMin ?? null,
+    salaryMax: job.salaryMax ?? null,
+    status: job.status || 'active',
+  });
+  return crypto.createHash('md5').update(payload).digest('hex');
+};
 
 const matchJobsForAllUsers = async () => {
   const users = await User.find({ isOnboarded: true, isEmailVerified: true });
-  const jobs = await Job.find(ACTIVE_JOB_FILTER).sort({ createdAt: -1 }).limit(MATCH_WINDOW);
 
-  console.log(`[Matcher] ${jobs.length} recent jobs × ${users.length} users`);
-  let totalNew = 0;
-  for (const user of users) totalNew += await _matchJobsForUser(user, jobs);
-  console.log(`[Matcher] Done — ${totalNew} new match(es) created`);
+  // Two candidate sets, two different treatments — see _matchJobsForUser:
+  //  - recentJobs: the existing fast path, insert-only (a job in this window
+  //    with no UserJob yet gets one; if it already has one, it's left alone —
+  //    a job's content changing routes it through needsMatching instead, so
+  //    this window doesn't need to re-check every pair's staleness every tick).
+  //  - pendingJobs: bounded backlog of new/changed jobs, insert-OR-UPDATE —
+  //    this is what actually fixes stale scores and out-of-window coverage.
+  const recentJobs = await Job.find(ACTIVE_JOB_FILTER).sort({ createdAt: -1 }).limit(MATCH_WINDOW);
+  const pendingJobs = await Job.find({ ...ACTIVE_JOB_FILTER, ...PENDING_JOB_FILTER })
+    .sort({ updatedAt: 1 }) // oldest-pending-first so nothing starves behind a constant stream of new jobs
+    .limit(PENDING_BATCH_SIZE);
+
+  console.log(`[Matcher] ${recentJobs.length} recent jobs + ${pendingJobs.length} pending job(s) × ${users.length} users`);
+
+  let totalCreated = 0;
+  let totalUpdated = 0;
+  for (const user of users) {
+    const recentResult = await _matchJobsForUser(user, recentJobs, { updateExisting: false });
+    const pendingResult = await _matchJobsForUser(user, pendingJobs, { updateExisting: true });
+    totalCreated += recentResult.created + pendingResult.created;
+    totalUpdated += pendingResult.updated;
+  }
+
+  // Only mark pending jobs processed now that every onboarded user has been
+  // checked against them this tick. If the loop above threw, execution never
+  // reaches here, so these jobs stay needsMatching:true for the next cron tick.
+  if (pendingJobs.length) {
+    await Job.updateMany({ _id: { $in: pendingJobs.map((j) => j._id) } }, { $set: { needsMatching: false } });
+  }
+
+  console.log(`[Matcher] Done — ${totalCreated} new match(es) created, ${totalUpdated} stale match(es) refreshed`);
 };
 
 const matchJobsForUser = async (userId) => {
   const user = await User.findById(userId);
   if (!user) return;
 
-  const jobs = await Job.find(ACTIVE_JOB_FILTER).sort({ createdAt: -1 }).limit(500);
-  console.log(`[Matcher] Onboard match: ${jobs.length} jobs for user ${user.email}`);
+  // Step 1: refresh this user's EXISTING matches if their profile changed —
+  // bounded by this one user's own match count (indexed by userId), not by
+  // the size of the Job collection, so it reaches matches on jobs far outside
+  // the latest-500 window without a full scan.
+  const refreshed = await rescoreUserMatches(user);
 
-  const created = await _matchJobsForUser(user, jobs);
-  console.log(`[Matcher] Onboard match done: ${created} UserJob records created for ${user.email}`);
+  // Step 2: discover brand-new matches among recent jobs (existing behavior,
+  // unchanged policy — see Improvement 5's report on why latest-500 stays).
+  const jobs = await Job.find(ACTIVE_JOB_FILTER).sort({ createdAt: -1 }).limit(500);
+  const { created } = await _matchJobsForUser(user, jobs, { updateExisting: false });
+
+  console.log(`[Matcher] ${user.email}: ${refreshed} match(es) refreshed, ${created} new match(es) among ${jobs.length} recent jobs`);
 };
 
-const _matchJobsForUser = async (user, jobs) => {
-  if (!jobs.length) return 0;
+// Rescores a single user's EXISTING UserJob records whose stored fingerprint/
+// version no longer matches current — i.e. the user's profile changed, the
+// matched job's content changed, or MATCHER_VERSION changed. Never creates new
+// records (that's _matchJobsForUser's job) and never deletes — a pair that now
+// scores 0 is simply updated to 0 and left for the existing score-threshold
+// filters (job listings, email digest) to exclude, preserving saved/applied/
+// emailed history intact.
+const rescoreUserMatches = async (user) => {
+  const userFingerprint = computeUserFingerprint(user);
+  const userJobs = await UserJob.find({ userId: user._id }).populate('jobId');
 
-  const existing = await UserJob.find({ userId: user._id, jobId: { $in: jobs.map((j) => j._id) } }).select('jobId');
-  const existingSet = new Set(existing.map((uj) => uj.jobId.toString()));
+  const ops = [];
+  for (const uj of userJobs) {
+    if (!uj.jobId) continue; // orphaned — its own Job doc was hard-deleted; not this function's concern
+    const jobFingerprint = computeJobFingerprint(uj.jobId);
+    const isCurrent = uj.matcherVersion === MATCHER_VERSION
+      && uj.userFingerprint === userFingerprint
+      && uj.jobFingerprint === jobFingerprint;
+    if (isCurrent) continue; // nothing changed — no scoring work needed
 
+    const { score, matchedSkills, matchedRole, reasons } = scoreJobDetailed(user, uj.jobId);
+    ops.push({
+      updateOne: {
+        filter: { _id: uj._id },
+        update: { $set: { score, matchedSkills, matchedRole, reasons, matcherVersion: MATCHER_VERSION, userFingerprint, jobFingerprint } },
+      },
+    });
+  }
+
+  if (ops.length) await UserJob.bulkWrite(ops);
+  return ops.length;
+};
+
+// Bounded, resumable pass bringing UserJob records up to MATCHER_VERSION after
+// a scoring-algorithm change. Called once per match cron tick (see
+// jobs/matchJobs.job.js) — each tick only advances VERSION_SWEEP_BATCH_SIZE
+// records, so a version bump never triggers one unbounded rescore of the whole
+// collection; the remaining backlog is simply picked up by subsequent ticks,
+// since the query itself is "whatever's still stale," not an offset/cursor.
+const sweepStaleMatcherVersions = async () => {
+  const stale = await UserJob.find({ matcherVersion: { $ne: MATCHER_VERSION } })
+    .limit(VERSION_SWEEP_BATCH_SIZE)
+    .populate('userId')
+    .populate('jobId');
+
+  const ops = [];
+  for (const uj of stale) {
+    if (!uj.userId || !uj.jobId) continue; // orphaned — leave alone
+    const { score, matchedSkills, matchedRole, reasons } = scoreJobDetailed(uj.userId, uj.jobId);
+    const userFingerprint = computeUserFingerprint(uj.userId);
+    const jobFingerprint = computeJobFingerprint(uj.jobId);
+    ops.push({
+      updateOne: {
+        filter: { _id: uj._id },
+        update: { $set: { score, matchedSkills, matchedRole, reasons, matcherVersion: MATCHER_VERSION, userFingerprint, jobFingerprint } },
+      },
+    });
+  }
+
+  if (ops.length) await UserJob.bulkWrite(ops);
+  return ops.length;
+};
+
+// `updateExisting: false` (used for the recent-jobs window and onboarding/
+// login discovery): exactly today's behavior — insert a UserJob only for a
+// (user, job) pair that doesn't have one yet; an existing pair is left alone.
+// `updateExisting: true` (used for the pending-jobs batch): ALSO checks
+// existing pairs for staleness and refreshes them in place — this is what
+// propagates a job content change into an already-existing match.
+const _matchJobsForUser = async (user, jobs, { updateExisting = false } = {}) => {
+  if (!jobs.length) return { created: 0, updated: 0 };
+
+  const existing = await UserJob.find({ userId: user._id, jobId: { $in: jobs.map((j) => j._id) } });
+  const existingByJobId = new Map(existing.map((uj) => [uj.jobId.toString(), uj]));
+
+  const userFingerprint = computeUserFingerprint(user); // computed once per user, not per job
   const toInsert = [];
+  const ops = [];
+
   for (const job of jobs) {
-    if (existingSet.has(job._id.toString())) continue;
+    const existingUj = existingByJobId.get(job._id.toString());
+
+    if (existingUj) {
+      if (!updateExisting) continue; // insert-only mode: a job already matched is left alone here
+
+      const jobFingerprint = computeJobFingerprint(job);
+      const isCurrent = existingUj.matcherVersion === MATCHER_VERSION
+        && existingUj.userFingerprint === userFingerprint
+        && existingUj.jobFingerprint === jobFingerprint;
+      if (isCurrent) continue; // already reflects this job's current content and this user's current profile
+
+      const { score, matchedSkills, matchedRole, reasons } = scoreJobDetailed(user, job);
+      ops.push({
+        updateOne: {
+          filter: { _id: existingUj._id },
+          update: { $set: { score, matchedSkills, matchedRole, reasons, matcherVersion: MATCHER_VERSION, userFingerprint, jobFingerprint } },
+        },
+      });
+      continue;
+    }
+
     const { score, matchedSkills, matchedRole, reasons } = scoreJobDetailed(user, job);
-    if (score === 0) continue;
-    toInsert.push({ userId: user._id, jobId: job._id, score, matchedSkills, matchedRole, reasons });
+    if (score === 0) continue; // no record created for a non-match, same as before
+    toInsert.push({
+      userId: user._id,
+      jobId: job._id,
+      score,
+      matchedSkills,
+      matchedRole,
+      reasons,
+      matcherVersion: MATCHER_VERSION,
+      userFingerprint,
+      jobFingerprint: computeJobFingerprint(job),
+    });
   }
 
-  if (toInsert.length) {
-    await UserJob.insertMany(toInsert, { ordered: false }).catch(() => {});
-  }
+  if (toInsert.length) await UserJob.insertMany(toInsert, { ordered: false }).catch(() => {});
+  if (ops.length) await UserJob.bulkWrite(ops).catch(() => {});
 
-  return toInsert.length;
+  return { created: toInsert.length, updated: ops.length };
 };
 
 const scoreJobWithBreakdown = (user, job) => {
@@ -403,4 +603,15 @@ const scoreJobWithBreakdown = (user, job) => {
   return { score: total, breakdown: { ...breakdown, total } };
 };
 
-module.exports = { matchJobsForAllUsers, matchJobsForUser, scoreJob, scoreJobDetailed, scoreJobWithBreakdown };
+module.exports = {
+  matchJobsForAllUsers,
+  matchJobsForUser,
+  rescoreUserMatches,
+  sweepStaleMatcherVersions,
+  scoreJob,
+  scoreJobDetailed,
+  scoreJobWithBreakdown,
+  computeUserFingerprint,
+  computeJobFingerprint,
+  MATCHER_VERSION,
+};

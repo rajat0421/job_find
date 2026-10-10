@@ -1,4 +1,5 @@
 const Job = require('../models/Job');
+const { computeJobFingerprint } = require('./jobMatcher.service');
 
 // How many consecutive COMPLETE, trustworthy scans of a posting's own board must
 // miss it before it's marked closed. Configurable via env for tuning without a
@@ -79,11 +80,20 @@ const observeJob = async ({ source, sourceBoard = null, sourceJobId = null, hash
     const byId = await Job.findOne({ source, sourceBoard, sourceJobId });
     if (byId) {
       const storedHash = await resolveStorableHash({ hash, excludeId: byId._id, source, sourceBoard, sourceJobId });
+
+      // Improvement 5: only flag this job for rematching when a field that
+      // actually feeds scoring changed (title/description/location/
+      // workplaceType/salary/status) — NOT for a routine "still alive"
+      // re-observation where nothing scoring-relevant moved. Comparing against
+      // the job's state as it already exists in the DB (not just overwriting
+      // blindly) is what keeps this cheap and correct.
+      const oldFingerprint = computeJobFingerprint(byId);
+      const newFingerprint = computeJobFingerprint({ ...fields, status: 'active' });
+      const set = { ...fields, hash: storedHash, lastSeenAt: now, status: 'active', missingScans: 0 };
+      if (oldFingerprint !== newFingerprint) set.needsMatching = true;
+
       try {
-        await Job.updateOne(
-          { _id: byId._id },
-          { $set: { ...fields, hash: storedHash, lastSeenAt: now, status: 'active', missingScans: 0 } }
-        );
+        await Job.updateOne({ _id: byId._id }, { $set: set });
       } catch (err) {
         console.warn(`[JobLifecycle] Failed to update observed job ${byId._id}:`, err.message);
       }

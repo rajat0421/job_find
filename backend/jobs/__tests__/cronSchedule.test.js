@@ -8,6 +8,7 @@ jest.mock('node-cron', () => ({ schedule: jest.fn() }));
 jest.mock('../../services/jobFetcher.service', () => ({ fetchAdzunaJobs: jest.fn().mockResolvedValue() }));
 jest.mock('../../services/jobMatcher.service', () => ({
   matchJobsForAllUsers: jest.fn().mockResolvedValue(),
+  sweepStaleMatcherVersions: jest.fn().mockResolvedValue(0),
 }));
 jest.mock('../../services/jobLifecycle.service', () => ({
   expireStaleJobs: jest.fn().mockResolvedValue(0),

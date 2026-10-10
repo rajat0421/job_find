@@ -25,9 +25,11 @@ const EmailLog = require('../../models/EmailLog');
 const Config = require('../../models/Config');
 const { sendJobDigestEmail } = require('../../services/email.service');
 const { getEmailThreshold } = require('../../services/config.service');
+const { computeUserFingerprint } = require('../../services/jobMatcher.service');
 const { sendDigest } = require('../dailyEmail.job');
 
 const DUE_USER = { _id: 'u1', email: 'a@x.com', name: 'A', isOnboarded: true };
+const DUE_USER_FINGERPRINT = computeUserFingerprint(DUE_USER);
 
 // Builds a mock Mongoose query chain: UserJob.find(...).sort().limit().populate()
 const buildUserJobQuery = (resolvedJobs) => {
@@ -46,7 +48,7 @@ beforeEach(() => {
 });
 
 test('send failure: does NOT mark emailed, does NOT advance lastEmailedAt, logs failed', async () => {
-  const matchedJob = { _id: 'uj1', jobId: { title: 'Backend Engineer' }, score: 80 };
+  const matchedJob = { _id: 'uj1', jobId: { title: 'Backend Engineer' }, score: 80, userFingerprint: DUE_USER_FINGERPRINT };
   UserJob.find.mockReturnValue(buildUserJobQuery([matchedJob]));
   sendJobDigestEmail.mockRejectedValue(new Error('smtp down'));
 
@@ -74,7 +76,7 @@ test('0 eligible jobs: logs skipped, does NOT advance lastEmailedAt (user stays 
 });
 
 test('success path: marks emailed, advances lastEmailedAt, logs sent', async () => {
-  const matchedJob = { _id: 'uj1', jobId: { title: 'Backend Engineer' }, score: 80 };
+  const matchedJob = { _id: 'uj1', jobId: { title: 'Backend Engineer' }, score: 80, userFingerprint: DUE_USER_FINGERPRINT };
   UserJob.find.mockReturnValue(buildUserJobQuery([matchedJob]));
   sendJobDigestEmail.mockResolvedValue();
 

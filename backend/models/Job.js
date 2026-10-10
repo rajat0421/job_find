@@ -22,6 +22,17 @@ const jobSchema = new mongoose.Schema({
   lastSeenAt: { type: Date, default: Date.now },
   status: { type: String, enum: ['active', 'closed', 'expired'], default: 'active' },
   missingScans: { type: Number, default: 0 }, // consecutive complete-scan misses since last seen; reset to 0 whenever observed again
+
+  // Improvement 5 — matching coverage tracking. Defaults to true so a brand-new
+  // job is pending by construction, AND so a pre-existing job (predating this
+  // field, absent from its stored document) reads as pending too via Mongoose's
+  // hydration default — meaning every legacy job gets at least one pass through
+  // the new pending-batch mechanism after this ships. Set false once a job has
+  // been successfully matched against every current user; set back to true by
+  // jobLifecycle.service.js's observeJob() only when a scoring-relevant field
+  // (title/description/location/workplaceType/salary/status) actually changes —
+  // never for lastSeenAt-only "still alive" observations.
+  needsMatching: { type: Boolean, default: true },
 }, { timestamps: true });
 
 // Non-unique — speeds up the identity lookups in jobLifecycle.service.js. Deliberately
@@ -31,5 +42,7 @@ const jobSchema = new mongoose.Schema({
 jobSchema.index({ source: 1, sourceBoard: 1, sourceJobId: 1 });
 // Powers the age-based expiry sweep (status active + lastSeenAt cutoff).
 jobSchema.index({ status: 1, lastSeenAt: 1 });
+// Powers the pending-match batch query in jobMatcher.service.js.
+jobSchema.index({ needsMatching: 1, status: 1, updatedAt: 1 });
 
 module.exports = mongoose.model('Job', jobSchema);

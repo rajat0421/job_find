@@ -5,7 +5,18 @@
 
 jest.mock('../../models/User', () => ({ find: jest.fn(), findById: jest.fn() }));
 jest.mock('../../models/Job', () => ({ find: jest.fn(() => ({ sort: () => ({ limit: () => Promise.resolve([]) }) })) }));
-jest.mock('../../models/UserJob', () => ({ find: jest.fn().mockResolvedValue([]), insertMany: jest.fn() }));
+jest.mock('../../models/UserJob', () => ({
+  // Supports both `await UserJob.find(...)` (used for the existing-pairs
+  // lookup) and `UserJob.find(...).populate(...)` (used by rescoreUserMatches)
+  // — both resolve to an empty array in these tests.
+  find: jest.fn(() => {
+    const result = Promise.resolve([]);
+    result.populate = () => Promise.resolve([]);
+    return result;
+  }),
+  insertMany: jest.fn(),
+  bulkWrite: jest.fn(),
+}));
 
 const Job = require('../../models/Job');
 const User = require('../../models/User');

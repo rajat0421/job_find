@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
+import { AuthShell, FOCUS_RING } from '../components/ui';
 
 const VerifyEmail = () => {
   const [digits, setDigits] = useState(['', '', '', '', '', '']);
@@ -69,69 +70,60 @@ const VerifyEmail = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#0a0a12] px-4">
-      <div className="w-full max-w-sm">
-
-        <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-white tracking-tight">
-            Job<span className="text-violet-400">Find</span>
-          </h1>
-        </div>
-
-        <div className="bg-[#12121c] border border-white/10 rounded-2xl p-7">
-          <div className="mb-6">
-            <h2 className="text-base font-semibold text-white">Check your email</h2>
-            <p className="text-sm text-slate-500 mt-1">
-              We sent a 6-digit code to{' '}
-              <span className="font-medium text-slate-300">{email}</span>
-            </p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-            <div className="flex gap-2 justify-between">
-              {digits.map((d, i) => (
-                <input
-                  key={i}
-                  ref={(el) => (refs.current[i] = el)}
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={1}
-                  value={d}
-                  onChange={(e) => handleChange(i, e.target.value)}
-                  onKeyDown={(e) => handleKeyDown(i, e)}
-                  onPaste={handlePaste}
-                  className="w-11 h-12 text-center text-lg font-semibold bg-[#1a1a28] border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition"
-                />
-              ))}
-            </div>
-
-            {error && <p className="text-sm text-red-400">{error}</p>}
-            {resent && <p className="text-sm text-emerald-400">Verification code resent.</p>}
-
-            <button
-              type="submit" disabled={loading}
-              className="w-full bg-violet-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-violet-700 transition-colors disabled:opacity-50"
-            >
-              {loading ? 'Verifying...' : 'Verify email'}
-            </button>
-          </form>
-
-          <p className="text-sm text-slate-600 mt-4">
-            Didn't receive a code?{' '}
-            <button onClick={handleResend} className="font-medium text-violet-400 hover:text-violet-300 transition-colors">
-              Resend
-            </button>
-          </p>
-
-          <div className="mt-4 flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3.5 py-3">
-            <span className="text-amber-400 text-sm mt-px shrink-0">⚠</span>
-            <p className="text-xs text-amber-400/80 leading-relaxed">
-              Email landing in spam? Check your <span className="font-semibold text-amber-400">Spam</span> or <span className="font-semibold text-amber-400">Junk</span> folder — our emails sometimes end up there.
-            </p>
-          </div>
-        </div>
+    <AuthShell>
+      <div className="mb-6">
+        <h2 className="text-base font-semibold text-white">Check your email</h2>
+        <p className="text-sm text-slate-500 mt-1">
+          We sent a 6-digit code to{' '}
+          <span className="font-medium text-slate-300">{email}</span>
+        </p>
       </div>
-    </div>
+
+      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+        <div className="flex gap-2 justify-between">
+          {digits.map((d, i) => (
+            <input
+              key={i}
+              ref={(el) => (refs.current[i] = el)}
+              type="text"
+              inputMode="numeric"
+              maxLength={1}
+              value={d}
+              onChange={(e) => handleChange(i, e.target.value)}
+              onKeyDown={(e) => handleKeyDown(i, e)}
+              onPaste={handlePaste}
+              className="w-11 h-12 text-center text-lg font-semibold bg-field border border-white/10 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition"
+            />
+          ))}
+        </div>
+
+        {error && (
+          <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2" role="alert">{error}</p>
+        )}
+        {resent && <p className="text-sm text-emerald-400" role="status">Verification code resent.</p>}
+
+        <button
+          type="submit" disabled={loading}
+          className={`w-full bg-violet-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-violet-700 transition-colors disabled:opacity-50 ${FOCUS_RING}`}
+        >
+          {loading ? 'Verifying...' : 'Verify email'}
+        </button>
+      </form>
+
+      <p className="text-sm text-slate-600 mt-4">
+        Didn't receive a code?{' '}
+        <button onClick={handleResend} className={`font-medium text-violet-400 hover:text-violet-300 transition-colors rounded ${FOCUS_RING}`}>
+          Resend
+        </button>
+      </p>
+
+      <div className="mt-4 flex items-start gap-2 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3.5 py-3">
+        <span className="text-amber-400 text-sm mt-px shrink-0">⚠</span>
+        <p className="text-xs text-amber-400/80 leading-relaxed">
+          Email landing in spam? Check your <span className="font-semibold text-amber-400">Spam</span> or <span className="font-semibold text-amber-400">Junk</span> folder — our emails sometimes end up there.
+        </p>
+      </div>
+    </AuthShell>
   );
 };
 

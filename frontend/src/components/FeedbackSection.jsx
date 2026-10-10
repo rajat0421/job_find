@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
 import { IconChat, IconThumbUp, IconThumbDown } from './icons';
+import { FOCUS_RING } from './ui';
 
 // Extracted from Dashboard.jsx (pre-launch polish) so the feedback form/list
 // has its own page instead of taking up space on the main dashboard, while
 // still being a single reusable component — not duplicated — for whichever
 // page wants to render it.
-const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a12]';
 
 const timeAgo = (date) => {
   const secs = Math.floor((Date.now() - new Date(date)) / 1000);
@@ -120,7 +120,7 @@ const FeedbackSection = ({ currentUserId }) => {
   };
 
   return (
-    <div className="bg-[#12121c]/70 border border-white/[0.07] rounded-2xl p-6 mb-4">
+    <div className="bg-card/70 border border-white/[0.07] rounded-2xl p-6 mb-4">
       <div className="flex items-center gap-1.5 mb-1">
         <IconChat className="w-3.5 h-3.5 text-slate-500" />
         <p className="text-xs font-medium text-slate-500">Feedback</p>
@@ -135,7 +135,7 @@ const FeedbackSection = ({ currentUserId }) => {
           placeholder="What's working? What should we improve? Anything you'd like to see?"
           maxLength={500}
           rows={3}
-          className="w-full bg-[#1a1a28] border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition resize-none"
+          className="w-full bg-field border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition resize-none"
         />
         <div className="flex items-center justify-between mt-2">
           <span className="text-xs text-slate-700">{message.length}/500</span>
@@ -147,8 +147,8 @@ const FeedbackSection = ({ currentUserId }) => {
             {submitting ? 'Sending...' : 'Send feedback'}
           </button>
         </div>
-        {submitted && <p className="text-xs text-emerald-400 mt-2">Thanks! Your feedback is pending review and will appear here once approved.</p>}
-        {error && <p className="text-xs text-red-400 mt-2">{error}</p>}
+        {submitted && <p className="text-xs text-emerald-400 mt-2" role="status">Thanks! Your feedback is pending review and will appear here once approved.</p>}
+        {error && <p className="text-xs text-red-400 mt-2" role="alert">{error}</p>}
       </form>
 
       {/* Feedback list */}

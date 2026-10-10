@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import api from '../services/api';
 import SkillTagInput from '../components/SkillTagInput';
 import RoleSelector from '../components/RoleSelector';
+import { inputCls, labelCls, FOCUS_RING } from '../components/ui';
 
 const EXPERIENCE_OPTIONS = [
   { value: 0,  label: 'Fresher' },
@@ -39,8 +40,6 @@ const REMOTE_OPTIONS = [
   { value: 'office', label: 'In-office' },
 ];
 
-const inputCls = 'w-full bg-[#1a1a28] border border-white/10 rounded-lg px-3.5 py-2.5 text-sm text-white placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-violet-500 transition';
-const labelCls = 'block text-sm font-medium text-slate-300 mb-1.5';
 const chipBase = 'px-3.5 py-2 rounded-lg text-sm font-medium border transition-colors';
 const chipActive = 'bg-violet-600 text-white border-violet-600';
 const chipIdle = 'border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-200 bg-transparent';
@@ -68,7 +67,7 @@ const TagInput = ({ label, hint, placeholder, tags, onChange }) => {
         />
         <button
           type="button" onClick={add}
-          className="px-4 py-2.5 bg-white/5 border border-white/10 text-slate-300 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors"
+          className={`px-4 py-2.5 bg-white/5 border border-white/10 text-slate-300 rounded-lg text-sm font-medium hover:bg-white/10 transition-colors ${FOCUS_RING}`}
         >
           Add
         </button>
@@ -76,7 +75,7 @@ const TagInput = ({ label, hint, placeholder, tags, onChange }) => {
       {tags.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mt-2.5">
           {tags.map(tag => (
-            <span key={tag} className="inline-flex items-center gap-1 bg-violet-600/15 text-violet-300 border border-violet-500/20 text-xs font-medium px-2.5 py-1 rounded-full">
+            <span key={tag} className="inline-flex items-center gap-1 bg-violet-600/15 text-violet-300 border border-violet-500/20 text-xs font-medium px-2.5 py-1 rounded-full break-words max-w-full">
               {tag}
               <button onClick={() => remove(tag)} className="hover:text-white leading-none">&times;</button>
             </span>
@@ -121,7 +120,7 @@ const Onboarding = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a12] px-4 py-12">
+    <div className="min-h-screen bg-surface px-4 py-12">
       <div className="max-w-lg mx-auto">
 
         <div className="mb-8">
@@ -132,7 +131,7 @@ const Onboarding = () => {
         </div>
 
         {/* Resume autofill shortcut */}
-        <Link to="/resume" className="block mb-4 bg-violet-600/10 border border-violet-500/30 rounded-2xl p-4 hover:bg-violet-600/15 transition-colors">
+        <Link to="/resume" className={`block mb-4 bg-violet-600/10 border border-violet-500/30 rounded-2xl p-4 hover:bg-violet-600/15 transition-colors ${FOCUS_RING}`}>
           <div className="flex items-center justify-between gap-3">
             <div>
               <p className="text-sm font-semibold text-violet-300">Upload your resume to autofill →</p>
@@ -141,7 +140,7 @@ const Onboarding = () => {
           </div>
         </Link>
 
-        <div className="bg-[#12121c] border border-white/10 rounded-2xl p-7">
+        <div className="bg-card border border-white/10 rounded-2xl p-7">
           <form onSubmit={handleSubmit} className="flex flex-col gap-5">
 
             <div>
@@ -174,7 +173,7 @@ const Onboarding = () => {
                     key={opt.value}
                     type="button"
                     onClick={() => setForm({ ...form, experience: opt.value })}
-                    className={`${chipBase} ${form.experience === opt.value ? chipActive : chipIdle}`}
+                    className={`${chipBase} ${form.experience === opt.value ? chipActive : chipIdle} ${FOCUS_RING}`}
                   >
                     {opt.label}
                   </button>
@@ -193,7 +192,7 @@ const Onboarding = () => {
                     key={q}
                     type="button"
                     onClick={() => setForm({ ...form, qualification: form.qualification === q ? '' : q })}
-                    className={`${chipBase} ${form.qualification === q ? chipActive : chipIdle}`}
+                    className={`${chipBase} ${form.qualification === q ? chipActive : chipIdle} ${FOCUS_RING}`}
                   >
                     {q}
                   </button>
@@ -231,7 +230,7 @@ const Onboarding = () => {
                     key={opt.value}
                     type="button"
                     onClick={() => setForm({ ...form, remotePreference: opt.value })}
-                    className={`${chipBase} ${form.remotePreference === opt.value ? chipActive : chipIdle}`}
+                    className={`${chipBase} ${form.remotePreference === opt.value ? chipActive : chipIdle} ${FOCUS_RING}`}
                   >
                     {opt.label}
                   </button>
@@ -239,11 +238,13 @@ const Onboarding = () => {
               </div>
             </div>
 
-            {error && <p className="text-sm text-red-400">{error}</p>}
+            {error && (
+              <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2" role="alert">{error}</p>
+            )}
 
             <button
               type="submit" disabled={loading}
-              className="w-full bg-violet-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-violet-700 transition-colors disabled:opacity-50 mt-1"
+              className={`w-full bg-violet-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-violet-700 transition-colors disabled:opacity-50 mt-1 ${FOCUS_RING}`}
             >
               {loading ? 'Saving...' : 'Save and start matching'}
             </button>

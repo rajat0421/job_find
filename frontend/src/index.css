@@ -7,11 +7,52 @@
 body {
   margin: 0;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background-color: #f8fafc;
-  color: #0f172a;
+  /* The app is dark-themed everywhere (every page sets its own full-height
+     dark background), but the body itself still defaulted to the original
+     light Vite-template color — visible as a flash on load and during
+     mobile overscroll bounce. Matches the shared `surface` token. */
+  background-color: #0a0a12;
+  color: #f1f5f9;
   -webkit-font-smoothing: antialiased;
 }
 
 input, button, select, textarea {
   font-family: inherit;
+}
+
+/* Site-wide safety net for visible keyboard focus (pre-launch accessibility
+   pass) — every primary interactive element also gets an explicit
+   focus-visible ring via the shared FOCUS_RING class in components/ui.jsx,
+   but this guarantees nothing is ever focusable with zero visible indicator,
+   including third-party/complex widgets (dropdown items, tag inputs) that
+   weren't individually touched. */
+:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+/* Chrome/Safari/Edge render browser-autofilled fields with their own opaque
+   light background (and dark text), ignoring the page's own background-color
+   entirely — the classic "dark-themed form, white autofilled field" bug.
+   The only reliable override is this inset-box-shadow trick (background-color
+   itself cannot be overridden on an autofilled field). The 9999s transition
+   delay prevents the brief flash of the native style before this kicks in.
+   #1a1a28 matches the shared `field` token in tailwind.config.js — kept as a
+   literal here since this pseudo-class isn't reachable via Tailwind utilities.
+   Applies to every input/textarea/select site-wide, not just Profile. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus {
+  -webkit-text-fill-color: #f1f5f9;
+  -webkit-box-shadow: 0 0 0 1000px #1a1a28 inset;
+  box-shadow: 0 0 0 1000px #1a1a28 inset;
+  caret-color: #f1f5f9;
+  transition: background-color 9999s ease-in-out 0s, color 9999s ease-in-out 0s;
 }

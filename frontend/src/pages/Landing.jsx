@@ -1,5 +1,6 @@
 import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { PageContainer, FOCUS_RING } from '../components/ui';
 
 const COMPANIES = [
   'OpenAI', 'Notion', 'Figma', 'Stripe', 'Snowflake', 'Meesho',
@@ -79,7 +80,7 @@ const PLANS = [
     price: 'Premium',
     sub: 'Every 5 hours',
     features: ['Everything in Free', 'Digest every 5 hours', 'Priority matching', 'Early access to new features'],
-    cta: 'Contact admin',
+    cta: 'Contact us',
     to: 'mailto:rajattalekar5143@gmail.com?subject=JobFind%20Pro%20Plan',
     highlight: true,
   },
@@ -88,7 +89,7 @@ const PLANS = [
     price: 'Premium',
     sub: 'Every hour',
     features: ['Everything in Pro', 'Hourly job alerts', 'Fastest possible delivery', 'Priority support'],
-    cta: 'Contact admin',
+    cta: 'Contact us',
     to: 'mailto:rajattalekar5143@gmail.com?subject=JobFind%20Ultra%20Plan',
     highlight: false,
   },
@@ -107,37 +108,37 @@ const Landing = () => {
   }
 
   return (
-    <div className="min-h-screen bg-[#0a0a12] text-white overflow-x-hidden">
+    <div className="min-h-screen bg-surface text-white overflow-x-hidden">
 
       {/* ── Navbar ───────────────────────────────────────────────────────────── */}
-      <nav className="sticky top-0 z-20 border-b border-white/[0.06] bg-[#0a0a12]/80 backdrop-blur-md">
-        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
+      <nav className="sticky top-0 z-20 border-b border-white/[0.06] bg-surface/80 backdrop-blur-md">
+        <PageContainer className="h-14 flex items-center justify-between">
           <span className="text-lg font-bold tracking-tight select-none">
             Job<span className="text-violet-400">Find</span>
           </span>
           <div className="flex items-center gap-2">
             <Link
               to="/login"
-              className="text-sm text-slate-400 hover:text-white px-3 py-1.5 transition-colors"
+              className={`text-sm text-slate-400 hover:text-white px-3 py-1.5 transition-colors rounded-lg ${FOCUS_RING}`}
             >
               Sign in
             </Link>
             <Link
               to="/register"
-              className="text-sm bg-violet-600 hover:bg-violet-700 text-white px-4 py-1.5 rounded-lg font-medium transition-colors"
+              className={`text-sm bg-violet-600 hover:bg-violet-700 text-white px-4 py-1.5 rounded-lg font-medium transition-colors ${FOCUS_RING}`}
             >
               Get started
             </Link>
           </div>
-        </div>
+        </PageContainer>
       </nav>
 
       {/* ── Hero ─────────────────────────────────────────────────────────────── */}
-      <section className="relative max-w-5xl mx-auto px-4 pt-28 pb-20 text-center">
+      <section className="relative pt-28 pb-20 text-center">
         {/* Glow blob */}
         <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-600/10 blur-[120px] rounded-full" />
 
-        <div className="relative">
+        <PageContainer className="relative">
           <div className="inline-flex items-center gap-2 bg-violet-600/10 border border-violet-500/20 rounded-full px-4 py-1.5 text-xs text-violet-400 font-medium mb-8">
             <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
             130+ companies · 4 job sources · Updated every hour
@@ -155,31 +156,33 @@ const Landing = () => {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-5">
             <Link
               to="/register"
-              className="w-full sm:w-auto bg-violet-600 hover:bg-violet-700 text-white px-8 py-3.5 rounded-xl text-sm font-semibold transition-colors"
+              className={`w-full sm:w-auto bg-violet-600 hover:bg-violet-700 text-white px-8 py-3.5 rounded-xl text-sm font-semibold transition-colors ${FOCUS_RING}`}
             >
               Get your free digest →
             </Link>
             <Link
               to="/login"
-              className="w-full sm:w-auto border border-white/10 hover:border-white/20 text-slate-300 hover:text-white px-8 py-3.5 rounded-xl text-sm font-semibold transition-colors"
+              className={`w-full sm:w-auto border border-white/10 hover:border-white/20 text-slate-300 hover:text-white px-8 py-3.5 rounded-xl text-sm font-semibold transition-colors ${FOCUS_RING}`}
             >
               Sign in
             </Link>
           </div>
           <p className="text-xs text-slate-600">Free forever · No credit card required</p>
-        </div>
+        </PageContainer>
       </section>
 
       {/* ── Stats bar ────────────────────────────────────────────────────────── */}
       <div className="border-y border-white/[0.06] py-8">
-        <div className="max-w-2xl mx-auto px-4 grid grid-cols-3 gap-4 text-center">
-          {STATS.map((s) => (
-            <div key={s.label}>
-              <p className="text-2xl font-bold text-white">{s.value}</p>
-              <p className="text-xs text-slate-500 mt-1">{s.label}</p>
-            </div>
-          ))}
-        </div>
+        <PageContainer>
+          <div className="max-w-2xl mx-auto grid grid-cols-3 gap-4 text-center">
+            {STATS.map((s) => (
+              <div key={s.label}>
+                <p className="text-2xl font-bold text-white">{s.value}</p>
+                <p className="text-xs text-slate-500 mt-1">{s.label}</p>
+              </div>
+            ))}
+          </div>
+        </PageContainer>
       </div>
 
       {/* ── Companies ────────────────────────────────────────────────────────── */}
@@ -187,29 +190,31 @@ const Landing = () => {
         <p className="text-center text-[10px] text-slate-600 uppercase tracking-widest mb-6">
           Sourcing live roles from companies including
         </p>
-        <div className="flex flex-wrap justify-center gap-2.5 max-w-3xl mx-auto px-4">
-          {COMPANIES.map((c) => (
-            <span
-              key={c}
-              className="text-xs text-slate-500 bg-white/[0.04] border border-white/[0.07] px-3 py-1.5 rounded-full"
-            >
-              {c}
+        <PageContainer>
+          <div className="flex flex-wrap justify-center gap-2.5 max-w-3xl mx-auto">
+            {COMPANIES.map((c) => (
+              <span
+                key={c}
+                className="text-xs text-slate-500 bg-white/[0.04] border border-white/[0.07] px-3 py-1.5 rounded-full"
+              >
+                {c}
+              </span>
+            ))}
+            <span className="text-xs text-slate-600 bg-white/[0.02] border border-white/[0.04] px-3 py-1.5 rounded-full">
+              + 110 more
             </span>
-          ))}
-          <span className="text-xs text-slate-600 bg-white/[0.02] border border-white/[0.04] px-3 py-1.5 rounded-full">
-            + 110 more
-          </span>
-        </div>
+          </div>
+        </PageContainer>
       </section>
 
       {/* ── How it works ─────────────────────────────────────────────────────── */}
-      <section className="max-w-5xl mx-auto px-4 py-20">
+      <PageContainer className="py-20">
         <p className="text-center text-[11px] text-slate-500 uppercase tracking-widest mb-3">How it works</p>
         <h2 className="text-3xl sm:text-4xl font-bold text-center mb-14">Set it once. Receive forever.</h2>
 
         <div className="grid sm:grid-cols-3 gap-5">
           {STEPS.map((step) => (
-            <div key={step.n} className="bg-[#12121c] border border-white/[0.07] rounded-2xl p-6">
+            <div key={step.n} className="bg-card border border-white/[0.07] rounded-2xl p-6">
               <span className="inline-flex w-8 h-8 rounded-full bg-violet-600/20 border border-violet-500/30 text-violet-400 text-xs font-bold items-center justify-center mb-5">
                 {step.n}
               </span>
@@ -218,16 +223,16 @@ const Landing = () => {
             </div>
           ))}
         </div>
-      </section>
+      </PageContainer>
 
       {/* ── Features ─────────────────────────────────────────────────────────── */}
-      <section className="max-w-5xl mx-auto px-4 pb-20">
+      <PageContainer className="pb-20">
         <p className="text-center text-[11px] text-slate-500 uppercase tracking-widest mb-3">Why JobFind</p>
         <h2 className="text-3xl sm:text-4xl font-bold text-center mb-14">Built to cut the noise.</h2>
 
         <div className="grid sm:grid-cols-2 gap-4">
           {FEATURES.map((f) => (
-            <div key={f.title} className="bg-[#12121c] border border-white/[0.07] rounded-2xl p-6 flex gap-4">
+            <div key={f.title} className="bg-card border border-white/[0.07] rounded-2xl p-6 flex gap-4">
               <span className="shrink-0 mt-0.5 w-10 h-10 rounded-xl bg-violet-500/10 text-violet-400 flex items-center justify-center">{f.icon}</span>
               <div>
                 <h3 className="text-base font-semibold text-white mb-1.5">{f.title}</h3>
@@ -236,10 +241,10 @@ const Landing = () => {
             </div>
           ))}
         </div>
-      </section>
+      </PageContainer>
 
       {/* ── Pricing ──────────────────────────────────────────────────────────── */}
-      <section className="max-w-5xl mx-auto px-4 pb-20">
+      <PageContainer className="pb-20">
         <p className="text-center text-[11px] text-slate-500 uppercase tracking-widest mb-3">Pricing</p>
         <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">Simple, honest pricing.</h2>
         <p className="text-center text-slate-500 text-sm mb-14">Start free. Upgrade when you need faster alerts.</p>
@@ -251,7 +256,7 @@ const Landing = () => {
               className={`rounded-2xl p-6 border flex flex-col ${
                 plan.highlight
                   ? 'border-violet-500/40 bg-violet-600/10'
-                  : 'border-white/[0.07] bg-[#12121c]'
+                  : 'border-white/[0.07] bg-card'
               }`}
             >
               {plan.highlight && (
@@ -273,14 +278,14 @@ const Landing = () => {
               {plan.to.startsWith('mailto') ? (
                 <a
                   href={plan.to}
-                  className="block w-full text-center border border-white/10 hover:border-white/20 text-slate-300 hover:text-white py-2.5 rounded-lg text-sm font-semibold transition-colors"
+                  className={`block w-full text-center border border-white/10 hover:border-white/20 text-slate-300 hover:text-white py-2.5 rounded-lg text-sm font-semibold transition-colors ${FOCUS_RING}`}
                 >
                   {plan.cta} →
                 </a>
               ) : (
                 <Link
                   to={plan.to}
-                  className="block w-full text-center bg-violet-600 hover:bg-violet-700 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors"
+                  className={`block w-full text-center bg-violet-600 hover:bg-violet-700 text-white py-2.5 rounded-lg text-sm font-semibold transition-colors ${FOCUS_RING}`}
                 >
                   {plan.cta}
                 </Link>
@@ -289,26 +294,23 @@ const Landing = () => {
           ))}
         </div>
 
-        {/* Rajat's note */}
         <div className="mt-10 max-w-xl mx-auto text-center">
           <p className="text-slate-500 text-sm leading-relaxed">
-            <span className="text-slate-400 font-medium">Psst</span> - between us, if you want all the premium stuff for free,
-            just slide into{' '}
+            Want more frequent job alerts, or have questions about a plan?{' '}
             <a
-              href="mailto:rajattalekar5143@gmail.com?subject=Free Premium Please"
-              className="text-violet-400 hover:text-violet-300 underline underline-offset-2 transition-colors"
+              href="mailto:rajattalekar5143@gmail.com?subject=JobFind%20plan%20question"
+              className={`text-violet-400 hover:text-violet-300 underline underline-offset-2 transition-colors rounded ${FOCUS_RING}`}
             >
-              Rajat's inbox
+              Contact us
             </a>
-            . He built this thing, he probably feels guilty enough to say yes.
+            {' '}to explore premium options.
           </p>
-          <p className="text-slate-600 text-xs mt-2">*(No guarantees. He might be sleeping.)*</p>
         </div>
-      </section>
+      </PageContainer>
 
       {/* ── Final CTA ────────────────────────────────────────────────────────── */}
-      <section className="max-w-5xl mx-auto px-4 pb-24">
-        <div className="relative bg-[#12121c] border border-violet-500/20 rounded-3xl p-14 text-center overflow-hidden">
+      <PageContainer className="pb-24">
+        <div className="relative bg-card border border-violet-500/20 rounded-3xl p-10 sm:p-14 text-center overflow-hidden">
           <div className="pointer-events-none absolute inset-0 bg-violet-600/5" />
           <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-[400px] h-[150px] bg-violet-600/10 blur-[80px] rounded-full" />
           <div className="relative">
@@ -318,33 +320,33 @@ const Landing = () => {
             </p>
             <Link
               to="/register"
-              className="inline-block bg-violet-600 hover:bg-violet-700 text-white px-10 py-3.5 rounded-xl text-sm font-semibold transition-colors"
+              className={`inline-block bg-violet-600 hover:bg-violet-700 text-white px-10 py-3.5 rounded-xl text-sm font-semibold transition-colors ${FOCUS_RING}`}
             >
               Create free account →
             </Link>
             <p className="text-xs text-slate-700 mt-4">No credit card · No spam · Unsubscribe anytime</p>
           </div>
         </div>
-      </section>
+      </PageContainer>
 
       {/* ── Footer ───────────────────────────────────────────────────────────── */}
-      <footer className="border-t border-white/[0.06] py-8 px-4">
-        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+      <footer className="border-t border-white/[0.06] py-8">
+        <PageContainer className="flex flex-col sm:flex-row items-center justify-between gap-4">
           <span className="text-sm font-bold">
             Job<span className="text-violet-400">Find</span>
           </span>
           <div className="flex items-center gap-6">
-            <Link to="/login" className="text-xs text-slate-600 hover:text-slate-400 transition-colors">Sign in</Link>
-            <Link to="/register" className="text-xs text-slate-600 hover:text-slate-400 transition-colors">Register</Link>
+            <Link to="/login" className={`text-xs text-slate-600 hover:text-slate-400 transition-colors rounded ${FOCUS_RING}`}>Sign in</Link>
+            <Link to="/register" className={`text-xs text-slate-600 hover:text-slate-400 transition-colors rounded ${FOCUS_RING}`}>Register</Link>
             <a
               href="mailto:rajattalekar5143@gmail.com"
-              className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
+              className={`text-xs text-slate-600 hover:text-slate-400 transition-colors rounded ${FOCUS_RING}`}
             >
               Contact
             </a>
           </div>
           <p className="text-xs text-slate-700">© 2026 JobFind</p>
-        </div>
+        </PageContainer>
       </footer>
 
     </div>

@@ -3,9 +3,10 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import api from '../services/api';
+import { PageContainer, FOCUS_RING } from '../components/ui';
 import {
   IconMail, IconClock, IconGrid, IconCheckCircle, IconPause,
-  IconPencil, IconSparkle, IconUserCircle, IconArrowRight, IconPin,
+  IconPencil, IconSparkle, IconArrowRight, IconPin,
 } from '../components/icons';
 
 const ADMIN_EMAIL = 'rajattalekar5143@gmail.com';
@@ -16,38 +17,37 @@ const SCHEDULE_TIERS = [
   { key: 1,  label: 'Every hour',   sublabel: '24× per day',   premium: true  },
 ];
 
-// Focus ring used on every interactive element for visible keyboard
-// navigation, consistent with the dark theme.
-const FOCUS_RING = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#0a0a12]';
-
-const StatCard = ({ icon: Icon, label, value, sub, highlight }) => (
-  <div className="bg-[#12121c] border border-white/10 rounded-xl p-4 flex flex-col gap-2 min-h-[94px]">
-    <div className="flex items-center gap-1.5 text-slate-500">
-      <Icon className="w-3.5 h-3.5 shrink-0" />
-      <span className="text-[11px] font-medium truncate">{label}</span>
+// ── One summary row (replaces the old hero badges + separate stat cards,
+//    which showed the same status/frequency information twice). ───────────
+const SummaryItem = ({ icon: Icon, label, value, highlight }) => (
+  <div className="flex items-center gap-2.5 px-4 py-3 sm:px-5">
+    <span className={`shrink-0 w-8 h-8 rounded-lg flex items-center justify-center ${highlight ? 'bg-emerald-500/10 text-emerald-400' : 'bg-white/5 text-slate-400'}`}>
+      <Icon className="w-4 h-4" />
+    </span>
+    <div className="min-w-0">
+      <p className="text-[11px] text-slate-500 leading-none mb-1">{label}</p>
+      <p className={`text-sm font-semibold leading-none truncate ${highlight ? 'text-emerald-400' : 'text-white'}`}>{value}</p>
     </div>
-    <p className={`text-sm font-semibold leading-snug ${highlight ? 'text-emerald-400' : 'text-white'}`}>{value}</p>
-    {sub && <p className="text-[11px] text-slate-600">{sub}</p>}
   </div>
 );
 
 const ScheduleSection = ({ currentInterval }) => (
-  <div className="bg-[#12121c] border border-white/10 rounded-2xl p-6 mb-4">
+  <div className="bg-card border border-white/10 rounded-2xl p-6 sm:p-7">
     <div className="flex items-center justify-between mb-5">
       <p className="text-sm font-semibold text-white">Email frequency</p>
       <span className="text-xs text-slate-600 hidden sm:block">How often we send your matches</span>
     </div>
 
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
       {SCHEDULE_TIERS.map((tier) => {
         const isActive = currentInterval === tier.key;
         return (
           <div
             key={tier.key}
-            className={`relative rounded-xl border p-4 transition-colors ${
+            className={`relative rounded-xl border p-5 transition-colors ${
               isActive
                 ? 'border-violet-500/50 bg-violet-600/10'
-                : 'border-white/[0.07] bg-[#0f0f1a]'
+                : 'border-white/[0.07] bg-card-soft'
             }`}
           >
             {isActive && (
@@ -60,8 +60,8 @@ const ScheduleSection = ({ currentInterval }) => (
                 <IconSparkle className="w-3 h-3" /> Premium
               </span>
             )}
-            <p className="text-white text-sm font-semibold mb-0.5 mt-0.5 pr-14">{tier.label}</p>
-            <p className="text-slate-500 text-xs mb-4">{tier.sublabel}</p>
+            <p className="text-white text-base font-semibold mb-0.5 mt-0.5 pr-14">{tier.label}</p>
+            <p className="text-slate-500 text-xs mb-5">{tier.sublabel}</p>
             {tier.premium ? (
               <a
                 href={`mailto:${ADMIN_EMAIL}?subject=JobFind%20Premium%20—%20${encodeURIComponent(tier.label)}%20emails&body=Hi%2C%20I'd%20like%20to%20get%20job%20alerts%20${encodeURIComponent(tier.label)}%20on%20JobFind.`}
@@ -102,7 +102,6 @@ const COMPLETENESS_CHECKS = [
   (p) => p.locations?.length > 0,
   (p) => p.salary > 0,
 ];
-const profileCompleteness = (p) => Math.round((COMPLETENESS_CHECKS.filter((check) => check(p)).length / COMPLETENESS_CHECKS.length) * 100);
 const hasAnyProfileData = (p) => COMPLETENESS_CHECKS.some((check) => check(p));
 
 const Dashboard = () => {
@@ -137,75 +136,58 @@ const Dashboard = () => {
   const paused = profile?.emailPaused;
 
   return (
-    <div className="min-h-screen bg-[#0a0a12] overflow-x-hidden">
+    <div className="min-h-screen bg-surface overflow-x-hidden">
       <Navbar />
 
-      <div className="max-w-2xl mx-auto px-4 py-10 sm:py-14">
+      <PageContainer className="py-10 sm:py-12">
 
-        {/* Hero */}
-        <div className="mb-8">
+        {/* 1. Welcome hero — compact, no decorative illustration */}
+        <div className="mb-6 max-w-2xl">
           <p className="text-sm text-slate-500 mb-2">Hi {user?.name || 'there'} 👋</p>
-          <h1 className="text-[26px] sm:text-3xl font-bold text-white leading-tight tracking-tight mb-3">
+          <h1 className="text-[26px] sm:text-[32px] font-bold text-white leading-tight tracking-tight mb-3">
             Your next opportunity, delivered.
           </h1>
-          <p className="text-slate-400 text-sm sm:text-[15px] leading-relaxed max-w-md mb-5">
+          <p className="text-slate-400 text-sm sm:text-[15px] leading-relaxed">
             Personalized job matches based on your skills, experience, and preferences — delivered straight to your inbox.
           </p>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <span className={`inline-flex items-center gap-1.5 text-xs font-medium pl-2 pr-2.5 py-1 rounded-full border ${
-              paused ? 'bg-slate-500/10 text-slate-400 border-slate-500/20' : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-            }`}>
-              <span className={`w-1.5 h-1.5 rounded-full ${paused ? 'bg-slate-500' : 'bg-emerald-400'}`} />
-              {paused ? 'Recommendations paused' : 'Recommendations active'}
-            </span>
-            {!paused && profile && (
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-white/5 text-slate-400 border border-white/10">
-                <IconClock className="w-3.5 h-3.5" /> {getScheduleText()}
-              </span>
-            )}
-            {profile && (
-              <span className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1 rounded-full bg-white/5 text-slate-400 border border-white/10">
-                <IconUserCircle className="w-3.5 h-3.5" /> Profile {profileCompleteness(profile)}% complete
-              </span>
-            )}
-          </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-3 mb-6">
-          <StatCard icon={paused ? IconPause : IconCheckCircle} label="Status" value={paused ? 'Paused' : 'Active'} highlight={!paused} />
-          <StatCard icon={IconMail} label="Delivery" value={paused ? 'Off' : getScheduleText()} />
-          <StatCard icon={IconGrid} label="Coverage" value="90+ sources" sub="boards monitored" />
-        </div>
-
-        {/* Schedule upgrade */}
+        {/* 2. Compact status summary — ONE row, real data only, no duplication
+            with the hero or any other section. */}
         {profile && (
-          <ScheduleSection currentInterval={profile.emailIntervalHours ?? 24} />
+          <div className="bg-card border border-white/10 rounded-2xl mb-6 grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-white/[0.06] overflow-hidden">
+            <SummaryItem
+              icon={paused ? IconPause : IconCheckCircle}
+              label="Recommendations"
+              value={paused ? 'Paused' : 'Active'}
+              highlight={!paused}
+            />
+            <SummaryItem
+              icon={IconMail}
+              label="Delivery"
+              value={paused ? 'Off' : getScheduleText()}
+            />
+            <SummaryItem
+              icon={IconGrid}
+              label="Source coverage"
+              value="130+ boards monitored"
+            />
+          </div>
         )}
 
-        {/* How it works — intentionally lighter-weight than the sections above */}
-        <div className="bg-[#12121c]/60 border border-white/[0.06] rounded-xl p-5 mb-4">
-          <p className="text-xs font-medium text-slate-500 mb-4">How it works</p>
-          <div className="flex flex-col gap-3">
-            {[
-              'JobFind collects opportunities from supported job sources.',
-              'Jobs are scored against your skills and preferences.',
-              'Relevant matches are delivered by email.',
-            ].map((step, i) => (
-              <div key={i} className="flex items-start gap-2.5">
-                <span className="shrink-0 w-5 h-5 rounded-full bg-white/5 text-slate-500 text-[10px] flex items-center justify-center font-semibold mt-0.5">
-                  {i + 1}
-                </span>
-                <p className="text-[13px] text-slate-500 leading-relaxed">{step}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Profile snapshot */}
+        {/* 3. Email frequency and plan options */}
         {profile && (
-          <div className="bg-[#12121c] border border-white/10 rounded-2xl p-6 mb-4">
+          <div className="mb-6">
+            <ScheduleSection currentInterval={profile.emailIntervalHours ?? 24} />
+          </div>
+        )}
+
+        {/* 4. Job preference summary — a balanced two-column layout on
+            desktop (skills vs. the rest), since those are genuinely two
+            distinct kinds of content and the wider container gives skill
+            chips real room to wrap without looking cramped. */}
+        {profile && (
+          <div className="bg-card border border-white/10 rounded-2xl p-6 sm:p-7 mb-6">
             <div className="flex items-center justify-between mb-5">
               <p className="text-sm font-semibold text-white">Your job preferences</p>
               <Link
@@ -217,18 +199,22 @@ const Dashboard = () => {
             </div>
 
             {hasAnyProfileData(profile) ? (
-              <>
-                {profile.skills?.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-4">
-                    {profile.skills.map(s => (
-                      <span key={s} className="text-xs bg-violet-600/15 text-violet-300 border border-violet-500/20 px-2.5 py-1 rounded-full break-words max-w-full">
-                        {s}
-                      </span>
-                    ))}
-                  </div>
-                )}
+              <div className="lg:grid lg:grid-cols-3 lg:gap-8">
+                <div className="lg:col-span-2">
+                  {profile.skills?.length > 0 ? (
+                    <div className="flex flex-wrap gap-1.5">
+                      {profile.skills.map(s => (
+                        <span key={s} className="text-xs bg-violet-600/15 text-violet-300 border border-violet-500/20 px-2.5 py-1 rounded-full break-words max-w-full">
+                          {s}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-600">No skills added yet.</p>
+                  )}
+                </div>
 
-                <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-400">
+                <div className="flex flex-col gap-2 mt-4 lg:mt-0 text-sm text-slate-400 lg:border-l lg:border-white/[0.06] lg:pl-6">
                   {profile.experience != null && (
                     <span className="inline-flex items-center gap-1.5">
                       <IconClock className="w-3.5 h-3.5 text-slate-600 shrink-0" />
@@ -236,9 +222,9 @@ const Dashboard = () => {
                     </span>
                   )}
                   {profile.locations?.length > 0 && (
-                    <span className="inline-flex items-center gap-1.5">
-                      <IconPin className="w-3.5 h-3.5 text-slate-600 shrink-0" />
-                      {profile.locations.join(', ')}
+                    <span className="inline-flex items-start gap-1.5">
+                      <IconPin className="w-3.5 h-3.5 text-slate-600 shrink-0 mt-0.5" />
+                      <span className="break-words">{profile.locations.join(', ')}</span>
                     </span>
                   )}
                   {profile.salary > 0 && (
@@ -248,7 +234,7 @@ const Dashboard = () => {
                     <span className="capitalize">{profile.remotePreference}</span>
                   )}
                 </div>
-              </>
+              </div>
             ) : (
               <div className="text-center py-5">
                 <p className="text-sm text-slate-400 mb-4 max-w-sm mx-auto leading-relaxed">
@@ -265,12 +251,11 @@ const Dashboard = () => {
           </div>
         )}
 
-        {/* Footer — the full feedback form/list now lives on its own page
-            (/feedback); this is just a compact entry point, kept alongside
-            the unsubscribe action so the dashboard still ends with a clear,
-            intentional close rather than an abrupt empty gap. */}
+        {/* 5. Minimal footer actions — the full feedback form/list lives on
+            its own page (/feedback); this is just a quiet, compact entry
+            point next to the unsubscribe action. */}
         {profile && (
-          <div className="mt-2 pt-6 border-t border-white/[0.06] text-center space-y-3">
+          <div className="pt-6 border-t border-white/[0.06] text-center space-y-3">
             <div className="flex items-center justify-center gap-4 text-xs">
               <Link
                 to="/feedback"
@@ -296,7 +281,7 @@ const Dashboard = () => {
             </p>
           </div>
         )}
-      </div>
+      </PageContainer>
     </div>
   );
 };

@@ -2,28 +2,16 @@ import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { PageContainer, FOCUS_RING } from '../components/ui';
 
-const COMPANIES = [
-  'OpenAI', 'Notion', 'Figma', 'Stripe', 'Snowflake', 'Meesho',
-  'CRED', 'Ramp', 'Coinbase', 'Airbnb', 'Databricks', 'Palantir',
-  'Perplexity', 'Cursor', 'Vercel', 'Linear', 'Spotify', 'Pinterest', 'Robinhood', 'Airtable',
-];
-
-const STEPS = [
-  {
-    n: '1',
-    title: 'Build your profile in minutes',
-    desc: 'Upload your resume and AI fills in your skills, roles and experience — or set them yourself. Add your target roles and locations.',
-  },
-  {
-    n: '2',
-    title: 'We scan every hour',
-    desc: 'We pull live postings from 130+ companies across Adzuna, Greenhouse, Lever and Ashby. Every job is scored against your profile.',
-  },
-  {
-    n: '3',
-    title: 'Matches hit your inbox',
-    desc: 'Top matches land in your email on your schedule — daily, every 5 hours, or hourly. Each one shows why it matched. No feed to scroll.',
-  },
+// Verified against the actual configured source lists (greenhouseBoards.json
+// + leverCompanies.json + ashbyBoards.json = 137 boards, plus Adzuna as a
+// fourth, separate source) — not an invented figure. No named-company list
+// is shown anymore: individual company names implied a specific guaranteed
+// integration per company, which isn't a claim this product makes (coverage
+// comes from configured boards + Adzuna's broader market search).
+const STATS = [
+  { value: '130+', label: 'companies' },
+  { value: '4', label: 'job sources' },
+  { value: 'Hourly', label: 'fresh scans' },
 ];
 
 const iconSvg = (paths) => (
@@ -32,36 +20,39 @@ const iconSvg = (paths) => (
   </svg>
 );
 
-const FEATURES = [
+const STEPS = [
   {
-    icon: iconSvg(<><path d="M8 3h6l4 4v12a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" /><path d="M14 3v4h4M9.5 12.5h5M9.5 16h5" /></>),
-    title: 'AI resume autofill',
-    desc: 'Upload your resume (PDF or DOCX) and AI extracts your skills, roles and experience in seconds. You review and edit everything before it saves.',
+    icon: iconSvg(<><circle cx="12" cy="8" r="3.2" /><path d="M5.5 20a6.5 6.5 0 0113 0" /></>),
+    title: 'Set your profile',
+    desc: 'Add your skills, roles and preferences — or autofill from your resume.',
   },
   {
-    icon: iconSvg(<><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /></>),
-    title: 'Role-first, not keyword soup',
-    desc: 'We filter by your exact target roles before anything else, then score skills, experience, location and salary. "Success Manager" never reaches a backend dev.',
-  },
-  {
-    icon: iconSvg(<><rect x="4" y="3" width="16" height="18" rx="1" /><path d="M9 21v-4h6v4M8 7h.01M12 7h.01M16 7h.01M8 11h.01M12 11h.01M16 11h.01" /></>),
-    title: '130+ companies, 4 sources',
-    desc: 'Live postings from Adzuna plus Greenhouse, Lever and Ashby boards — OpenAI, Stripe, Meesho, Notion, Snowflake and 130+ more, all in one digest.',
-  },
-  {
-    icon: iconSvg(<path d="M12 3l1.6 5L18.5 9.6 13.6 12 12 17l-1.6-5L5.5 9.6 10.4 8z" />),
-    title: 'Scores that explain themselves',
-    desc: 'Every match shows a score and why it matched — the skills, role and location that lined up. No black-box results, and low scores never reach you.',
-  },
-  {
-    icon: iconSvg(<><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></>),
-    title: 'Delivery on your schedule',
-    desc: 'Daily, every 5 hours, or hourly — you choose. Remote and hybrid roles are detected and included based on your preference.',
+    icon: iconSvg(<><circle cx="12" cy="12" r="8" /><path d="M8.5 12.5l2.3 2.3L16 9.5" /></>),
+    title: 'Get matched',
+    desc: 'Every posting is scored against your profile, hourly.',
   },
   {
     icon: iconSvg(<><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></>),
-    title: 'Inbox, not a feed',
-    desc: 'No app to check, no notifications to ignore. Curated matches arrive in your email exactly when you want them.',
+    title: 'Check your inbox',
+    desc: 'Top matches arrive on your schedule, with reasons attached.',
+  },
+];
+
+const BENEFITS = [
+  {
+    icon: iconSvg(<><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="3" /></>),
+    title: 'Role and skill-based matching',
+    desc: 'Filtered by your target roles first, then scored on skills, experience, location and salary.',
+  },
+  {
+    icon: iconSvg(<><path d="M8 3h6l4 4v12a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" /><path d="M14 3v4h4M9.5 12.5h5M9.5 16h5" /></>),
+    title: 'Resume-assisted profile setup',
+    desc: 'Upload a resume and AI drafts your profile — you review and edit before anything saves.',
+  },
+  {
+    icon: iconSvg(<><circle cx="12" cy="12" r="8" /><path d="M12 8v4l3 2" /></>),
+    title: 'Email delivery preferences',
+    desc: 'Choose daily, every 5 hours, or hourly — matches come to your inbox on your schedule.',
   },
 ];
 
@@ -70,7 +61,7 @@ const PLANS = [
     name: 'Free',
     price: '₹0',
     sub: 'Daily digest',
-    features: ['AI resume autofill', 'Role + skill matching', '130+ companies · 4 sources', 'Daily email digest'],
+    features: ['Daily email digest', 'Resume & role matching'],
     cta: 'Get started free',
     to: '/register',
     highlight: false,
@@ -79,7 +70,7 @@ const PLANS = [
     name: 'Pro',
     price: 'Premium',
     sub: 'Every 5 hours',
-    features: ['Everything in Free', 'Digest every 5 hours', 'Priority matching', 'Early access to new features'],
+    features: ['Everything in Free', 'Digest every 5 hours'],
     cta: 'Contact us',
     to: 'mailto:rajattalekar5143@gmail.com?subject=JobFind%20Pro%20Plan',
     highlight: true,
@@ -88,17 +79,11 @@ const PLANS = [
     name: 'Ultra',
     price: 'Premium',
     sub: 'Every hour',
-    features: ['Everything in Pro', 'Hourly job alerts', 'Fastest possible delivery', 'Priority support'],
+    features: ['Everything in Pro', 'Hourly job alerts'],
     cta: 'Contact us',
     to: 'mailto:rajattalekar5143@gmail.com?subject=JobFind%20Ultra%20Plan',
     highlight: false,
   },
-];
-
-const STATS = [
-  { value: '130+', label: 'companies' },
-  { value: '4', label: 'job sources' },
-  { value: 'Hourly', label: 'fresh scans' },
 ];
 
 const Landing = () => {
@@ -110,23 +95,17 @@ const Landing = () => {
   return (
     <div className="min-h-screen bg-surface text-white overflow-x-hidden">
 
-      {/* ── Navbar ───────────────────────────────────────────────────────────── */}
+      {/* ── Navigation ───────────────────────────────────────────────────────── */}
       <nav className="sticky top-0 z-20 border-b border-white/[0.06] bg-surface/80 backdrop-blur-md">
         <PageContainer className="h-14 flex items-center justify-between">
           <span className="text-lg font-bold tracking-tight select-none">
             Job<span className="text-violet-400">Find</span>
           </span>
           <div className="flex items-center gap-2">
-            <Link
-              to="/login"
-              className={`text-sm text-slate-400 hover:text-white px-3 py-1.5 transition-colors rounded-lg ${FOCUS_RING}`}
-            >
+            <Link to="/login" className={`text-sm text-slate-400 hover:text-white px-3 py-1.5 transition-colors rounded-lg ${FOCUS_RING}`}>
               Sign in
             </Link>
-            <Link
-              to="/register"
-              className={`text-sm bg-violet-600 hover:bg-violet-700 text-white px-4 py-1.5 rounded-lg font-medium transition-colors ${FOCUS_RING}`}
-            >
+            <Link to="/register" className={`text-sm bg-violet-600 hover:bg-violet-700 text-white px-4 py-1.5 rounded-lg font-medium transition-colors ${FOCUS_RING}`}>
               Get started
             </Link>
           </div>
@@ -134,139 +113,95 @@ const Landing = () => {
       </nav>
 
       {/* ── Hero ─────────────────────────────────────────────────────────────── */}
-      <section className="relative pt-28 pb-20 text-center">
-        {/* Glow blob */}
-        <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-600/10 blur-[120px] rounded-full" />
-
-        <PageContainer className="relative">
-          <div className="inline-flex items-center gap-2 bg-violet-600/10 border border-violet-500/20 rounded-full px-4 py-1.5 text-xs text-violet-400 font-medium mb-8">
-            <span className="w-1.5 h-1.5 rounded-full bg-violet-400 animate-pulse" />
-            130+ companies · 4 job sources · Updated every hour
-          </div>
-
-          <h1 className="text-5xl sm:text-6xl lg:text-7xl font-bold leading-[1.08] tracking-tight mb-6">
-            Stop searching.<br />
-            <span className="text-violet-400">Start receiving.</span>
+      <section className="text-center pt-20 pb-14 sm:pt-24 sm:pb-16">
+        <PageContainer>
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-[1.1] tracking-tight mb-4">
+            Less searching.<br />
+            <span className="text-violet-400">More opportunities.</span>
           </h1>
 
-          <p className="text-lg text-slate-400 max-w-lg mx-auto mb-10 leading-relaxed">
-            Upload your resume, and JobFind matches roles to your exact skills across 130+ companies — then delivers a curated digest to your inbox. No scrolling required.
+          <p className="text-base sm:text-lg text-slate-400 max-w-md mx-auto mb-8">
+            Jobs matched to your skills, delivered to your inbox.
           </p>
 
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-5">
-            <Link
-              to="/register"
-              className={`w-full sm:w-auto bg-violet-600 hover:bg-violet-700 text-white px-8 py-3.5 rounded-xl text-sm font-semibold transition-colors ${FOCUS_RING}`}
-            >
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 mb-4">
+            <Link to="/register" className={`w-full sm:w-auto bg-violet-600 hover:bg-violet-700 text-white px-8 py-3.5 rounded-xl text-sm font-semibold transition-colors ${FOCUS_RING}`}>
               Get your free digest →
             </Link>
-            <Link
-              to="/login"
-              className={`w-full sm:w-auto border border-white/10 hover:border-white/20 text-slate-300 hover:text-white px-8 py-3.5 rounded-xl text-sm font-semibold transition-colors ${FOCUS_RING}`}
-            >
+            <Link to="/login" className={`w-full sm:w-auto border border-white/10 hover:border-white/20 text-slate-300 hover:text-white px-8 py-3.5 rounded-xl text-sm font-semibold transition-colors ${FOCUS_RING}`}>
               Sign in
             </Link>
           </div>
-          <p className="text-xs text-slate-600">Free forever · No credit card required</p>
+          <p className="text-xs text-slate-600">Free to start · Unsubscribe anytime</p>
         </PageContainer>
       </section>
 
-      {/* ── Stats bar ────────────────────────────────────────────────────────── */}
-      <div className="border-y border-white/[0.06] py-8">
+      {/* ── Trust strip — one compact row, only verified figures ────────────────── */}
+      <div className="border-y border-white/[0.06] py-5">
         <PageContainer>
-          <div className="max-w-2xl mx-auto grid grid-cols-3 gap-4 text-center">
+          <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-1.5">
             {STATS.map((s) => (
-              <div key={s.label}>
-                <p className="text-2xl font-bold text-white">{s.value}</p>
-                <p className="text-xs text-slate-500 mt-1">{s.label}</p>
-              </div>
+              <p key={s.label} className="text-sm text-slate-400">
+                <span className="text-white font-bold">{s.value}</span> {s.label}
+              </p>
             ))}
           </div>
         </PageContainer>
       </div>
 
-      {/* ── Companies ────────────────────────────────────────────────────────── */}
-      <section className="py-14 border-b border-white/[0.06]">
-        <p className="text-center text-[10px] text-slate-600 uppercase tracking-widest mb-6">
-          Sourcing live roles from companies including
-        </p>
-        <PageContainer>
-          <div className="flex flex-wrap justify-center gap-2.5 max-w-3xl mx-auto">
-            {COMPANIES.map((c) => (
-              <span
-                key={c}
-                className="text-xs text-slate-500 bg-white/[0.04] border border-white/[0.07] px-3 py-1.5 rounded-full"
-              >
-                {c}
-              </span>
-            ))}
-            <span className="text-xs text-slate-600 bg-white/[0.02] border border-white/[0.04] px-3 py-1.5 rounded-full">
-              + 110 more
-            </span>
-          </div>
-        </PageContainer>
-      </section>
-
       {/* ── How it works ─────────────────────────────────────────────────────── */}
-      <PageContainer className="py-20">
-        <p className="text-center text-[11px] text-slate-500 uppercase tracking-widest mb-3">How it works</p>
-        <h2 className="text-3xl sm:text-4xl font-bold text-center mb-14">Set it once. Receive forever.</h2>
-
-        <div className="grid sm:grid-cols-3 gap-5">
+      <PageContainer className="py-14">
+        <h2 className="text-xl sm:text-2xl font-bold text-center mb-10">How it works</h2>
+        <div className="grid sm:grid-cols-3 gap-8 sm:gap-6 sm:divide-x sm:divide-white/[0.06]">
           {STEPS.map((step) => (
-            <div key={step.n} className="bg-card border border-white/[0.07] rounded-2xl p-6">
-              <span className="inline-flex w-8 h-8 rounded-full bg-violet-600/20 border border-violet-500/30 text-violet-400 text-xs font-bold items-center justify-center mb-5">
-                {step.n}
+            <div key={step.title} className="flex flex-col items-center text-center sm:px-4">
+              <span className="w-10 h-10 rounded-full bg-violet-500/10 text-violet-400 flex items-center justify-center mb-3">
+                {step.icon}
               </span>
-              <h3 className="text-base font-semibold text-white mb-2">{step.title}</h3>
-              <p className="text-sm text-slate-500 leading-relaxed">{step.desc}</p>
+              <h3 className="text-sm font-semibold text-white mb-1">{step.title}</h3>
+              <p className="text-xs text-slate-500 leading-relaxed max-w-[200px]">{step.desc}</p>
             </div>
           ))}
         </div>
       </PageContainer>
 
-      {/* ── Features ─────────────────────────────────────────────────────────── */}
-      <PageContainer className="pb-20">
-        <p className="text-center text-[11px] text-slate-500 uppercase tracking-widest mb-3">Why JobFind</p>
-        <h2 className="text-3xl sm:text-4xl font-bold text-center mb-14">Built to cut the noise.</h2>
-
-        <div className="grid sm:grid-cols-2 gap-4">
-          {FEATURES.map((f) => (
-            <div key={f.title} className="bg-card border border-white/[0.07] rounded-2xl p-6 flex gap-4">
-              <span className="shrink-0 mt-0.5 w-10 h-10 rounded-xl bg-violet-500/10 text-violet-400 flex items-center justify-center">{f.icon}</span>
-              <div>
-                <h3 className="text-base font-semibold text-white mb-1.5">{f.title}</h3>
-                <p className="text-sm text-slate-500 leading-relaxed">{f.desc}</p>
-              </div>
+      {/* ── Benefits ─────────────────────────────────────────────────────────── */}
+      <PageContainer className="pb-14">
+        <h2 className="text-xl sm:text-2xl font-bold text-center mb-10">Why JobFind</h2>
+        <div className="grid sm:grid-cols-3 gap-6">
+          {BENEFITS.map((b) => (
+            <div key={b.title} className="flex flex-col items-center text-center sm:items-start sm:text-left">
+              <span className="w-10 h-10 rounded-xl bg-violet-500/10 text-violet-400 flex items-center justify-center mb-3">
+                {b.icon}
+              </span>
+              <h3 className="text-sm font-semibold text-white mb-1">{b.title}</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">{b.desc}</p>
             </div>
           ))}
         </div>
       </PageContainer>
 
       {/* ── Pricing ──────────────────────────────────────────────────────────── */}
-      <PageContainer className="pb-20">
-        <p className="text-center text-[11px] text-slate-500 uppercase tracking-widest mb-3">Pricing</p>
-        <h2 className="text-3xl sm:text-4xl font-bold text-center mb-4">Simple, honest pricing.</h2>
-        <p className="text-center text-slate-500 text-sm mb-14">Start free. Upgrade when you need faster alerts.</p>
+      <PageContainer className="pb-14">
+        <h2 className="text-xl sm:text-2xl font-bold text-center mb-1">Simple, honest pricing</h2>
+        <p className="text-center text-slate-500 text-sm mb-10">Start free. Upgrade when you need faster alerts.</p>
 
-        <div className="grid sm:grid-cols-3 gap-4 max-w-3xl mx-auto">
+        <div className="grid sm:grid-cols-3 gap-4 max-w-3xl mx-auto items-stretch">
           {PLANS.map((plan) => (
             <div
               key={plan.name}
-              className={`rounded-2xl p-6 border flex flex-col ${
-                plan.highlight
-                  ? 'border-violet-500/40 bg-violet-600/10'
-                  : 'border-white/[0.07] bg-card'
+              className={`rounded-2xl p-5 border flex flex-col ${
+                plan.highlight ? 'border-violet-500/40 bg-violet-600/10' : 'border-white/[0.07] bg-card'
               }`}
             >
               {plan.highlight && (
-                <p className="text-[10px] text-violet-400 font-bold uppercase tracking-widest mb-3">Most popular</p>
+                <p className="text-[10px] text-violet-400 font-bold uppercase tracking-widest mb-2">Most popular</p>
               )}
-              <h3 className="text-lg font-bold text-white mb-1">{plan.name}</h3>
-              <p className="text-2xl font-bold text-white mb-1">{plan.price}</p>
-              <p className="text-xs text-slate-500 mb-6">{plan.sub}</p>
+              <h3 className="text-base font-bold text-white mb-1">{plan.name}</h3>
+              <p className="text-xl font-bold text-white mb-0.5">{plan.price}</p>
+              <p className="text-xs text-slate-500 mb-4">{plan.sub}</p>
 
-              <ul className="flex flex-col gap-2.5 mb-6 flex-1">
+              <ul className="flex flex-col gap-1.5 mb-5 flex-1">
                 {plan.features.map((f) => (
                   <li key={f} className="text-sm text-slate-400 flex items-start gap-2">
                     <span className="text-emerald-500 shrink-0 mt-px">✓</span>
@@ -293,39 +228,16 @@ const Landing = () => {
             </div>
           ))}
         </div>
-
-        <div className="mt-10 max-w-xl mx-auto text-center">
-          <p className="text-slate-500 text-sm leading-relaxed">
-            Want more frequent job alerts, or have questions about a plan?{' '}
-            <a
-              href="mailto:rajattalekar5143@gmail.com?subject=JobFind%20plan%20question"
-              className={`text-violet-400 hover:text-violet-300 underline underline-offset-2 transition-colors rounded ${FOCUS_RING}`}
-            >
-              Contact us
-            </a>
-            {' '}to explore premium options.
-          </p>
-        </div>
       </PageContainer>
 
       {/* ── Final CTA ────────────────────────────────────────────────────────── */}
-      <PageContainer className="pb-24">
-        <div className="relative bg-card border border-violet-500/20 rounded-3xl p-10 sm:p-14 text-center overflow-hidden">
-          <div className="pointer-events-none absolute inset-0 bg-violet-600/5" />
-          <div className="pointer-events-none absolute top-0 left-1/2 -translate-x-1/2 w-[400px] h-[150px] bg-violet-600/10 blur-[80px] rounded-full" />
-          <div className="relative">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4">Ready to get matched?</h2>
-            <p className="text-slate-400 text-sm max-w-md mx-auto mb-8 leading-relaxed">
-              Upload your resume or set up your profile in 2 minutes. We'll scan 130+ companies and send you the best matches with reasons.
-            </p>
-            <Link
-              to="/register"
-              className={`inline-block bg-violet-600 hover:bg-violet-700 text-white px-10 py-3.5 rounded-xl text-sm font-semibold transition-colors ${FOCUS_RING}`}
-            >
-              Create free account →
-            </Link>
-            <p className="text-xs text-slate-700 mt-4">No credit card · No spam · Unsubscribe anytime</p>
-          </div>
+      <PageContainer className="pb-16">
+        <div className="bg-card border border-white/10 rounded-2xl px-6 py-10 sm:py-12 text-center">
+          <h2 className="text-2xl sm:text-3xl font-bold mb-2">Ready for better job matches?</h2>
+          <p className="text-slate-400 text-sm mb-7">Set up your profile in two minutes and get your first digest.</p>
+          <Link to="/register" className={`inline-block bg-violet-600 hover:bg-violet-700 text-white px-8 py-3 rounded-xl text-sm font-semibold transition-colors ${FOCUS_RING}`}>
+            Create free account →
+          </Link>
         </div>
       </PageContainer>
 
@@ -338,10 +250,7 @@ const Landing = () => {
           <div className="flex items-center gap-6">
             <Link to="/login" className={`text-xs text-slate-600 hover:text-slate-400 transition-colors rounded ${FOCUS_RING}`}>Sign in</Link>
             <Link to="/register" className={`text-xs text-slate-600 hover:text-slate-400 transition-colors rounded ${FOCUS_RING}`}>Register</Link>
-            <a
-              href="mailto:rajattalekar5143@gmail.com"
-              className={`text-xs text-slate-600 hover:text-slate-400 transition-colors rounded ${FOCUS_RING}`}
-            >
+            <a href="mailto:rajattalekar5143@gmail.com" className={`text-xs text-slate-600 hover:text-slate-400 transition-colors rounded ${FOCUS_RING}`}>
               Contact
             </a>
           </div>

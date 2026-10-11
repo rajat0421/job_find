@@ -128,9 +128,8 @@ const AccountSettingsModal = () => {
               <AccountInfoSection profile={profile} onEditProfile={close} />
               <ChangePasswordSection hasPassword={!!profile?.hasPassword} />
               <DeleteAccountSection
-                hasPassword={!!profile?.hasPassword}
                 onDeletingChange={setDeleting}
-                onDeleted={() => { close(); logout(); navigate('/'); }}
+                onDeleted={() => { close(); logout(); navigate('/', { state: { accountDeleted: true } }); }}
               />
             </>
           )}

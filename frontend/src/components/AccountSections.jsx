@@ -102,14 +102,18 @@ export const ChangePasswordSection = ({ hasPassword, idAnchor }) => {
 // `onDeletingChange` (optional) reports whether a delete request is currently
 // in flight — the modal uses this to refuse to close via backdrop/Escape
 // while a destructive operation is actually in progress.
-export const DeleteAccountSection = ({ hasPassword, idAnchor, onDeleted, onDeletingChange }) => {
+//
+// The typed "DELETE" confirmation is the only safeguard, for every account
+// type (password, Google, or both) — no current-password re-entry, no
+// Google re-auth, no email confirmation loop. The backend enforces this same
+// rule server-side and never trusts anything but the authenticated session.
+export const DeleteAccountSection = ({ idAnchor, onDeleted, onDeletingChange }) => {
   const [expanded, setExpanded] = useState(false);
-  const [password, setPassword] = useState('');
   const [confirmation, setConfirmation] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  const canSubmit = confirmation === 'DELETE' && (!hasPassword || password.length > 0);
+  const canSubmit = confirmation === 'DELETE';
 
   const setSubmittingAndReport = (val) => {
     setSubmitting(val);
@@ -118,15 +122,17 @@ export const DeleteAccountSection = ({ hasPassword, idAnchor, onDeleted, onDelet
 
   const handleDelete = async (e) => {
     e.preventDefault();
-    if (!canSubmit) return;
+    // Guards against a repeated/double submit while a request is already in
+    // flight (the button is also disabled, but this is the authoritative gate).
+    if (!canSubmit || submitting) return;
     setSubmittingAndReport(true);
     setError('');
     try {
-      await api.delete('/user/account', { data: { password: hasPassword ? password : undefined, confirmation } });
+      await api.delete('/user/account', { data: { confirmation } });
       onDeleted();
     } catch (err) {
-      // Failure leaves the typed confirmation/password in place — the user
-      // doesn't have to re-type everything to retry.
+      // Failure leaves the typed confirmation in place — the user doesn't
+      // have to re-type it to retry. Never claim success on this path.
       setError(err.response?.data?.message || 'Something went wrong');
       setSubmittingAndReport(false);
     }
@@ -149,12 +155,6 @@ export const DeleteAccountSection = ({ hasPassword, idAnchor, onDeleted, onDelet
         </button>
       ) : (
         <form onSubmit={handleDelete} className="flex flex-col gap-3 border-t border-red-500/20 pt-4">
-          {hasPassword && (
-            <div>
-              <label className={labelCls}>Current password</label>
-              <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className={inputCls} placeholder="Confirm your password" autoComplete="current-password" disabled={submitting} />
-            </div>
-          )}
           <div>
             <label className={labelCls}>
               Type <span className="font-mono text-red-400">DELETE</span> to confirm
@@ -175,7 +175,7 @@ export const DeleteAccountSection = ({ hasPassword, idAnchor, onDeleted, onDelet
             <button
               type="button"
               disabled={submitting}
-              onClick={() => { setExpanded(false); setPassword(''); setConfirmation(''); setError(''); }}
+              onClick={() => { setExpanded(false); setConfirmation(''); setError(''); }}
               className={`text-sm font-medium text-slate-400 hover:text-white px-4 py-2.5 rounded-lg transition-colors disabled:opacity-40 ${FOCUS_RING}`}
             >
               Cancel

@@ -124,43 +124,32 @@ describe('deleteAccount', () => {
     User.findById.mockResolvedValue(passwordUser());
     const res = mockRes();
 
-    await deleteAccount({ user: { id: 'u1' }, body: { password: 'old', confirmation: 'delete' } }, res);
+    await deleteAccount({ user: { id: 'u1' }, body: { confirmation: 'delete' } }, res);
 
     expect(UserJob.deleteMany).not.toHaveBeenCalled();
     expect(User.deleteOne).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
   });
 
-  test('a password account must re-enter its current password, and an incorrect one deletes nothing (400, not 401 — see controller comment)', async () => {
+  test('a missing confirmation is rejected before any deletion', async () => {
     User.findById.mockResolvedValue(passwordUser());
-    bcrypt.compare.mockResolvedValue(false);
     const res = mockRes();
 
-    await deleteAccount({ user: { id: 'u1' }, body: { password: 'wrong', confirmation: 'DELETE' } }, res);
+    await deleteAccount({ user: { id: 'u1' }, body: {} }, res);
 
     expect(UserJob.deleteMany).not.toHaveBeenCalled();
     expect(User.deleteOne).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(400);
   });
 
-  test('a missing password for a password account is rejected before any deletion', async () => {
+  test('a password account can delete by typing DELETE alone — no password required or checked', async () => {
     User.findById.mockResolvedValue(passwordUser());
+    okDeletes();
     const res = mockRes();
 
     await deleteAccount({ user: { id: 'u1' }, body: { confirmation: 'DELETE' } }, res);
 
-    expect(UserJob.deleteMany).not.toHaveBeenCalled();
-    expect(res.status).toHaveBeenCalledWith(400);
-  });
-
-  test('a successful deletion removes every owned collection, then the User document last', async () => {
-    User.findById.mockResolvedValue(passwordUser());
-    bcrypt.compare.mockResolvedValue(true);
-    okDeletes();
-    const res = mockRes();
-
-    await deleteAccount({ user: { id: 'u1' }, body: { password: 'old', confirmation: 'DELETE' } }, res);
-
+    expect(bcrypt.compare).not.toHaveBeenCalled();
     expect(UserJob.deleteMany).toHaveBeenCalledWith({ userId: 'u1' });
     expect(ResumeProfile.deleteMany).toHaveBeenCalledWith({ userId: 'u1' });
     expect(Feedback.deleteMany).toHaveBeenCalledWith({ userId: 'u1' });
@@ -181,12 +170,33 @@ describe('deleteAccount', () => {
     expect(User.deleteOne).toHaveBeenCalledWith({ _id: 'u2' });
   });
 
+  // Even if a malicious client sends a different id anywhere in the request,
+  // the controller must only ever resolve the account from req.user.id (the
+  // verified-JWT identity set by the `protect` middleware) — never from the
+  // request body or params. This is what makes "delete my own account" safe
+  // to expose without per-request re-authentication.
+  test('ignores any client-supplied user id and only ever acts on the authenticated session identity', async () => {
+    User.findById.mockResolvedValue(passwordUser());
+    okDeletes();
+    const res = mockRes();
+
+    await deleteAccount({
+      user: { id: 'u1' },
+      params: { id: 'u2', userId: 'u2' },
+      body: { confirmation: 'DELETE', userId: 'u2', id: 'u2' },
+    }, res);
+
+    expect(User.findById).toHaveBeenCalledWith('u1');
+    expect(UserJob.deleteMany).toHaveBeenCalledWith({ userId: 'u1' });
+    expect(User.deleteOne).toHaveBeenCalledWith({ _id: 'u1' });
+    expect(User.deleteOne).not.toHaveBeenCalledWith({ _id: 'u2' });
+  });
+
   // The core safety guarantee: if ANY auxiliary collection's cleanup fails,
   // the User document must never be deleted — the account stays fully intact
   // and the same request can be retried safely later.
   test('a failure deleting an auxiliary collection aborts BEFORE the User document is deleted', async () => {
     User.findById.mockResolvedValue(passwordUser());
-    bcrypt.compare.mockResolvedValue(true);
     UserJob.deleteMany.mockResolvedValue({});
     ResumeProfile.deleteMany.mockRejectedValue(new Error('Mongo blip'));
     Feedback.deleteMany.mockResolvedValue({});
@@ -194,9 +204,12 @@ describe('deleteAccount', () => {
     OtpVerification.deleteMany.mockResolvedValue({});
     const res = mockRes();
 
-    await expect(deleteAccount({ user: { id: 'u1' }, body: { password: 'old', confirmation: 'DELETE' } }, res)).resolves.not.toThrow();
+    await expect(deleteAccount({ user: { id: 'u1' }, body: { confirmation: 'DELETE' } }, res)).resolves.not.toThrow();
 
     expect(User.deleteOne).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      message: expect.stringMatching(/nothing was deleted/i),
+    }));
   });
 });

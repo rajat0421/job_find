@@ -46,7 +46,7 @@ const Account = () => {
 
           <AccountInfoSection profile={profile} />
           <ChangePasswordSection hasPassword={!!profile?.hasPassword} idAnchor="change-password" />
-          <DeleteAccountSection hasPassword={!!profile?.hasPassword} idAnchor="delete-account" onDeleted={() => { logout(); navigate('/'); }} />
+          <DeleteAccountSection idAnchor="delete-account" onDeleted={() => { logout(); navigate('/', { state: { accountDeleted: true } }); }} />
         </div>
       </PageContainer>
     </div>

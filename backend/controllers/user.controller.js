@@ -139,6 +139,14 @@ const changePassword = async (req, res) => {
 // own account (req.user.id only — never a client-supplied id) and every
 // collection that stores THIS user's own data.
 //
+// By design, the ONLY confirmation required is the typed "DELETE" string —
+// no current-password re-entry, no re-authentication with Google, no email
+// confirmation loop, for either account type. Deletion is still exclusively
+// scoped to the caller's own session identity (`req.user.id`, set by the
+// `protect` middleware from a verified JWT) — simplifying the confirmation
+// step does not touch authentication: a request must still carry a valid
+// token, and it can only ever act on the account that token belongs to.
+//
 // Ordering is deliberate: every auxiliary collection is deleted BEFORE the
 // User document itself. If any step throws, the whole request fails with
 // nothing further attempted — the account and any not-yet-deleted data stay
@@ -168,19 +176,9 @@ const deleteAccount = async (req, res) => {
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    const { password, confirmation } = req.body;
+    const { confirmation } = req.body;
     if (confirmation !== 'DELETE') {
       return res.status(400).json({ message: 'Type DELETE to confirm account deletion' });
-    }
-    // Re-authentication, where the existing security model supports it — a
-    // password-based account must re-enter its current password. A
-    // Google-only account has no password to check; the typed "DELETE"
-    // confirmation above is its equivalent safeguard, since this backend has
-    // no server-side way to re-verify a live Google session mid-request.
-    if (user.password) {
-      if (!password) return res.status(400).json({ message: 'Current password is required to delete your account' });
-      const match = await bcrypt.compare(password, user.password);
-      if (!match) return res.status(400).json({ message: 'Incorrect password' });
     }
 
     const userId = user._id;

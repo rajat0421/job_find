@@ -1,4 +1,4 @@
-import { Link, Navigate } from 'react-router-dom';
+import { Link, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { PageContainer, FOCUS_RING } from '../components/ui';
 
@@ -88,12 +88,21 @@ const PLANS = [
 
 const Landing = () => {
   const { isLoggedIn, user } = useAuth();
+  const location = useLocation();
   if (isLoggedIn) {
     return <Navigate to={user?.isOnboarded ? '/dashboard' : '/onboarding'} replace />;
   }
 
+  const accountDeleted = !!location.state?.accountDeleted;
+
   return (
     <div className="min-h-screen bg-surface text-white overflow-x-hidden">
+
+      {accountDeleted && (
+        <div className="bg-emerald-500/10 border-b border-emerald-500/20 text-emerald-400 text-sm text-center py-2.5 px-4" role="status">
+          Your account has been permanently deleted.
+        </div>
+      )}
 
       {/* ── Navigation ───────────────────────────────────────────────────────── */}
       <nav className="sticky top-0 z-20 border-b border-white/[0.06] bg-surface/80 backdrop-blur-md">

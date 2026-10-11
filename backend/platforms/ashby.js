@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { observeJob, sweepMissingJobs } = require('../services/jobLifecycle.service');
 const { getWithRetry, classifyError } = require('../services/httpClient.service');
 const { createProviderDeadline } = require('../services/fetchBudget.service');
+const { correlateTrace } = require('../services/traceCorrelation.service');
 
 // Public Ashby Job Posting API — no auth. Companies are managed in the Company
 // collection (admin portal), with ashbyBoards.json as a seed/fallback.
@@ -64,7 +65,8 @@ const fetchJobs = async ({ cycleDeadline } = {}) => {
         `https://api.ashbyhq.com/posting-api/job-board/${board}`,
         { timeout: 10000 },
         stats,
-        deadlines
+        deadlines,
+        { provider: 'ashby', operation: 'list_jobs', boardToken: board }
       );
 
       const jobs = res.data?.jobs || [];
@@ -111,6 +113,10 @@ const fetchJobs = async ({ cycleDeadline } = {}) => {
 
       if (fetched > 0) {
         await sweepMissingJobs({ source: 'ashby', sourceBoard: board, observedSourceJobIds: observedIds });
+      }
+
+      if (res.traceId) {
+        await correlateTrace({ traceId: res.traceId, source: 'ashby', sourceBoard: board, observedSourceJobIds: observedIds });
       }
     } catch (err) {
       const reason = classifyError(err);

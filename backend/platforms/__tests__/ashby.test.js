@@ -7,6 +7,8 @@ jest.mock('../../models/Job', () => {
 });
 jest.mock('../../models/Company', () => ({ updateOne: jest.fn().mockResolvedValue({}) }));
 jest.mock('../../services/companies.service', () => ({ getCompanies: jest.fn() }));
+jest.mock('../../services/traceStorage.service', () => ({ recordTrace: jest.fn().mockResolvedValue(undefined) }));
+jest.mock('../../services/traceCorrelation.service', () => ({ correlateTrace: jest.fn().mockResolvedValue(undefined) }));
 
 const axios = require('axios');
 const Job = require('../../models/Job');

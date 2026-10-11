@@ -21,3 +21,12 @@ test('the new diagnostics and analytics routes are registered on this same prote
   const paths = router.stack.filter((l) => l.route).map((l) => l.route.path);
   expect(paths).toEqual(expect.arrayContaining(['/diagnostics', '/analytics']));
 });
+
+// Upstream-trace debugger routes — these are admin-only purely by virtue of
+// being registered on this router, after isAdmin (see the first test above).
+// There is no separate auth check in adminTrace.controller.js itself, so
+// proving these paths exist on THIS router is what proves they're protected.
+test('the upstream-trace and overview routes are registered on this same protected router', () => {
+  const paths = router.stack.filter((l) => l.route).map((l) => l.route.path);
+  expect(paths).toEqual(expect.arrayContaining(['/overview', '/traces', '/traces/:traceId', '/traces/:traceId/jobs/:upstreamJobId']));
+});

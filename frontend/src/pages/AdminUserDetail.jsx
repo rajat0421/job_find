@@ -174,7 +174,7 @@ const AdminUserDetail = () => {
   if (loading) return <div className="min-h-screen bg-[#0a0a12] flex items-center justify-center text-slate-500">Loading...</div>;
   if (!detail) return <div className="min-h-screen bg-[#0a0a12] flex items-center justify-center text-slate-500">User not found</div>;
 
-  const { user, jobs } = detail;
+  const { user, jobs, currentMatcherVersion } = detail;
 
   return (
     <div className="min-h-screen bg-[#0a0a12]">
@@ -358,7 +358,17 @@ const AdminUserDetail = () => {
                       <>
                         <tr key={i} className={`border-t border-white/[0.06] transition-colors ${isOpen ? 'bg-white/[0.03]' : 'hover:bg-white/[0.02]'}`}>
                           <td className="px-4 py-3">
-                            <span className={`text-xs font-bold px-2 py-1 rounded-full ${scoreColor(uj.score)}`}>{uj.score}%</span>
+                            <div className="flex items-center gap-1.5">
+                              <span className={`text-xs font-bold px-2 py-1 rounded-full ${scoreColor(uj.score)}`}>{uj.score}%</span>
+                              {uj.stale && (
+                                <span
+                                  title={`Computed under matcher version ${uj.matcherVersion ?? 'unknown'} — current is ${currentMatcherVersion}. Not yet reprocessed by the background version sweep; this score may not reflect the current scoring logic.`}
+                                  className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-400 whitespace-nowrap cursor-help"
+                                >
+                                  STALE
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="px-4 py-3 font-medium text-slate-200 max-w-xs truncate">
                             {uj.job?.applyLink

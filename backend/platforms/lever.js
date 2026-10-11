@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { observeJob, sweepMissingJobs } = require('../services/jobLifecycle.service');
 const { getWithRetry, classifyError } = require('../services/httpClient.service');
 const { createProviderDeadline } = require('../services/fetchBudget.service');
+const { correlateTrace } = require('../services/traceCorrelation.service');
 
 // Public Lever Postings API — no auth needed. Companies are managed in the Company
 // collection (admin portal), with leverCompanies.json as a seed/fallback.
@@ -85,7 +86,8 @@ const fetchJobs = async ({ cycleDeadline } = {}) => {
         `${baseUrl(region)}/v0/postings/${token}`,
         { params: { mode: 'json' }, timeout: 10000 },
         stats,
-        deadlines
+        deadlines,
+        { provider: 'lever', operation: 'list_jobs', boardToken: token }
       );
 
       const jobs = Array.isArray(res.data) ? res.data : [];
@@ -132,6 +134,10 @@ const fetchJobs = async ({ cycleDeadline } = {}) => {
 
       if (fetched > 0) {
         await sweepMissingJobs({ source: 'lever', sourceBoard: token, observedSourceJobIds: observedIds });
+      }
+
+      if (res.traceId) {
+        await correlateTrace({ traceId: res.traceId, source: 'lever', sourceBoard: token, observedSourceJobIds: observedIds });
       }
     } catch (err) {
       // Token may be wrong, company left Lever, or the request failed even

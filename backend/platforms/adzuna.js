@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { observeJob } = require('../services/jobLifecycle.service');
 const { getWithRetry, classifyError } = require('../services/httpClient.service');
 const { createProviderDeadline } = require('../services/fetchBudget.service');
+const { correlateTrace } = require('../services/traceCorrelation.service');
 
 const generateJobHash = (title, company, location) =>
   crypto.createHash('md5').update(`${title}-${company}-${location}`).digest('hex');
@@ -39,12 +40,14 @@ const fetchForCategory = async (appId, appKey, what, stats, deadlines) => {
         'https://api.adzuna.com/v1/api/jobs/in/search/' + page,
         { params: { app_id: appId, app_key: appKey, results_per_page: 50, what, where: 'India' }, timeout: 10000 },
         stats,
-        deadlines
+        deadlines,
+        { provider: 'adzuna', operation: 'search', boardToken: what }
       );
 
       const jobs = response.data.results || [];
       if (!jobs.length) break; // stop paginating this category once results dry up
       fetched += jobs.length;
+      const observedIds = [];
 
       // NOTE on lifecycle: Adzuna's fetch is a limited keyword/category search
       // across a fixed category list (see CATEGORIES above), never a complete
@@ -59,6 +62,7 @@ const fetchForCategory = async (appId, appKey, what, stats, deadlines) => {
         const company = j.company?.display_name || '';
         const location = j.location?.display_name || '';
         const sourceJobId = j.id != null ? String(j.id) : null;
+        if (sourceJobId) observedIds.push(sourceJobId);
         const hash = generateJobHash(title, company, location);
 
         const { created, updated } = await observeJob({
@@ -77,6 +81,10 @@ const fetchForCategory = async (appId, appKey, what, stats, deadlines) => {
         });
         if (created) newCount++;
         else if (updated) updatedCount++;
+      }
+
+      if (response.traceId) {
+        await correlateTrace({ traceId: response.traceId, source: 'adzuna', sourceBoard: null, observedSourceJobIds: observedIds });
       }
     } catch (err) {
       failureReason = classifyError(err);

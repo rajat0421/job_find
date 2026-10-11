@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { observeJob, sweepMissingJobs } = require('../services/jobLifecycle.service');
 const { getWithRetry, classifyError } = require('../services/httpClient.service');
 const { createProviderDeadline } = require('../services/fetchBudget.service');
+const { correlateTrace } = require('../services/traceCorrelation.service');
 
 const generateJobHash = (title, company, location) =>
   crypto.createHash('md5').update(`${title}-${company}-${location}`).digest('hex');
@@ -153,7 +154,8 @@ const fetchJobs = async ({ cycleDeadline } = {}) => {
         `https://boards-api.greenhouse.io/v1/boards/${token}/jobs?content=true`,
         { timeout: 8000 },
         stats,
-        deadlines
+        deadlines,
+        { provider: 'greenhouse', operation: 'list_jobs', boardToken: token }
       );
 
       const jobs = res.data?.jobs || [];
@@ -222,6 +224,13 @@ const fetchJobs = async ({ cycleDeadline } = {}) => {
       // handled in the catch block below, which never runs the sweep.
       if (fetched > 0) {
         await sweepMissingJobs({ source: 'greenhouse', sourceBoard: token, observedSourceJobIds: observedIds });
+      }
+
+      // Best-effort — never throws, never affects ingestion. Lets an admin
+      // find this exact captured request/response starting from either an
+      // upstream Greenhouse job ID or an internal Job _id.
+      if (res.traceId) {
+        await correlateTrace({ traceId: res.traceId, source: 'greenhouse', sourceBoard: token, observedSourceJobIds: observedIds });
       }
     } catch (err) {
       // Board token might be wrong, company removed it, or the request failed

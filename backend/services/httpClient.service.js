@@ -1,5 +1,8 @@
 const axios = require('axios');
+const { randomUUID } = require('crypto');
 const { positiveIntFromEnv } = require('./envValidation.service');
+const { recordTrace } = require('./traceStorage.service');
+const { sanitizeErrorMessage } = require('./traceRedaction.service');
 
 // Defaults chosen for the current workload: a handful of sequential per-board
 // requests an hour, not a high-throughput crawler. 10s is generous enough for
@@ -79,8 +82,12 @@ const budgetExceededError = () =>
  * than burn the last of the budget on a doomed wait). This does NOT shrink an
  * already-in-flight request's own timeout — see this module's callers'
  * documentation of the resulting maximum deadline overrun.
+ *
+ * This is the UNINSTRUMENTED core — behavior is completely untouched by the
+ * upstream-trace feature. `getWithRetry` below wraps it to add tracing
+ * without risking any change to this proven retry/budget logic.
  */
-const getWithRetry = async (url, config = {}, stats = null, deadlines = []) => {
+const getWithRetryCore = async (url, config = {}, stats = null, deadlines = []) => {
   const list = (Array.isArray(deadlines) ? deadlines : [deadlines]).filter(Boolean);
   const isExpired = () => list.some((d) => d.expired());
   const minRemainingMs = () => (list.length ? Math.min(...list.map((d) => d.remainingMs())) : Infinity);
@@ -103,8 +110,74 @@ const getWithRetry = async (url, config = {}, stats = null, deadlines = []) => {
   throw lastErr;
 };
 
+/**
+ * Same contract as getWithRetryCore, plus optional upstream-trace capture.
+ * `traceMeta` (`{provider, operation, boardToken}`) is opt-in — omitting it
+ * (or calling getWithRetryCore directly) behaves EXACTLY as before this
+ * feature existed. When provided, the full request/response (or failure) is
+ * redacted and persisted via traceStorage.service.js after the retry core
+ * settles — this never changes what's returned or thrown, only observes it.
+ *
+ * A successful response gets `res.traceId` attached; a thrown error gets
+ * `err.traceId` attached — so a caller that wants to correlate this request
+ * with the internal Job documents it produced (see platforms/*.js) can do so
+ * without this function needing to know anything about job parsing.
+ *
+ * Trace recording is awaited (not fire-and-forget) specifically so a
+ * caller's correlation follow-up is guaranteed to find the trace document
+ * already written. recordTrace() is already designed to never throw (see
+ * traceStorage.service.js) — but that call is ALSO wrapped in its own
+ * try/catch right here, defensively, so even an unexpected future bug in the
+ * tracing path can never change what this function returns or throws to its
+ * caller. Tracing only ever OBSERVES the request; it can never be part of
+ * deciding its outcome.
+ */
+const safeRecordTrace = async (trace) => {
+  try {
+    await recordTrace(trace);
+  } catch (err) {
+    console.error('[HttpClient] Unexpected error while recording upstream trace (ignored):', err.message);
+  }
+};
+
+const getWithRetry = async (url, config = {}, stats = null, deadlines = [], traceMeta = null) => {
+  if (!traceMeta) return getWithRetryCore(url, config, stats, deadlines);
+
+  const traceId = randomUUID();
+  const requestedAt = new Date();
+  const startMs = Date.now();
+  const localStats = { retries: 0 };
+
+  try {
+    const res = await getWithRetryCore(url, config, localStats, deadlines);
+    if (stats) stats.retries = (stats.retries || 0) + localStats.retries;
+    await safeRecordTrace({
+      traceId, provider: traceMeta.provider, operation: traceMeta.operation, boardToken: traceMeta.boardToken ?? null,
+      method: 'GET', url, params: config.params, requestHeaders: config.headers,
+      requestedAt, respondedAt: new Date(), durationMs: Date.now() - startMs, retries: localStats.retries,
+      success: true, statusCode: res.status, responseHeaders: res.headers, responseBody: res.data,
+    });
+    res.traceId = traceId;
+    return res;
+  } catch (err) {
+    if (stats) stats.retries = (stats.retries || 0) + localStats.retries;
+    const hasResponse = !!err.response;
+    await safeRecordTrace({
+      traceId, provider: traceMeta.provider, operation: traceMeta.operation, boardToken: traceMeta.boardToken ?? null,
+      method: 'GET', url, params: config.params, requestHeaders: config.headers,
+      requestedAt, respondedAt: hasResponse ? new Date() : null, durationMs: Date.now() - startMs, retries: localStats.retries,
+      success: false, statusCode: hasResponse ? err.response.status : null, responseHeaders: hasResponse ? err.response.headers : {},
+      responseBody: hasResponse ? err.response.data : null,
+      errorKind: classifyError(err), errorMessage: sanitizeErrorMessage(err.message),
+    });
+    err.traceId = traceId;
+    throw err;
+  }
+};
+
 module.exports = {
   getWithRetry,
+  getWithRetryCore,
   classifyError,
   isRetryable,
   DEFAULT_TIMEOUT_MS,

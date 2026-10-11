@@ -3,6 +3,7 @@ const router = express.Router();
 const { isAdmin } = require('../middleware/admin.middleware');
 const { listUsers, getUserDetail, runApiForUser, updateEmailSchedule, getEmailScheduleStats, setGlobalEmailSchedule, triggerEmailDigest, getConfig, updateConfig, fixGreenhouseDescriptions, rescoreAllUsers, backfillMatches, getLogs, getEmailLogs, getJobBreakdown, sendDigestForUser, getUpcomingEmails, listCompanies, createCompany, updateCompany, deleteCompany, getJobs, getAnalytics, getDiagnostics } = require('../controllers/admin.controller');
 const { adminGetFeedback, approveFeedback, declineFeedback, deleteFeedback } = require('../controllers/feedback.controller');
+const { listTraces, getTraceDetail, getRawJobFromTrace, getOverview } = require('../controllers/adminTrace.controller');
 
 router.use(isAdmin);
 
@@ -30,6 +31,11 @@ router.post('/companies', createCompany);
 router.patch('/companies/:id', updateCompany);
 router.delete('/companies/:id', deleteCompany);
 router.get('/users/:id/jobs/:jobId/breakdown', getJobBreakdown);
+
+router.get('/overview', getOverview);
+router.get('/traces', listTraces);
+router.get('/traces/:traceId', getTraceDetail);
+router.get('/traces/:traceId/jobs/:upstreamJobId', getRawJobFromTrace);
 
 router.get('/feedback',                  adminGetFeedback);
 router.patch('/feedback/:id/approve',    approveFeedback);

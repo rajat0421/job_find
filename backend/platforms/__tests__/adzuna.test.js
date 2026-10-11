@@ -9,6 +9,8 @@ jest.mock('../../services/jobLifecycle.service', () => {
   const actual = jest.requireActual('../../services/jobLifecycle.service');
   return { ...actual, sweepMissingJobs: jest.fn() };
 });
+jest.mock('../../services/traceStorage.service', () => ({ recordTrace: jest.fn().mockResolvedValue(undefined) }));
+jest.mock('../../services/traceCorrelation.service', () => ({ correlateTrace: jest.fn().mockResolvedValue(undefined) }));
 
 const axios = require('axios');
 const Job = require('../../models/Job');

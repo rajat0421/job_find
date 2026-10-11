@@ -7,10 +7,11 @@ const RequestLog = require('../models/RequestLog');
 const EmailLog = require('../models/EmailLog');
 const Config = require('../models/Config');
 const Company = require('../models/Company');
-const { scoreJob, scoreJobDetailed, scoreJobWithBreakdown, matchJobsForAllUsers, computeUserFingerprint, computeJobFingerprint, MATCHER_VERSION } = require('../services/jobMatcher.service');
+const { scoreJob, scoreJobDetailed, scoreJobWithBreakdown, matchJobsForAllUsers, sweepStaleMatcherVersions, getMatcherVersionBacklog, computeUserFingerprint, computeJobFingerprint, MATCHER_VERSION } = require('../services/jobMatcher.service');
 const { getCompanies } = require('../services/companies.service');
 const { getEmailThreshold } = require('../services/config.service');
 const { getOperationalOverview, getFetchHealth, getMatchHealth, getEmailHealth } = require('../services/monitoring.service');
+const { runMatchTick, isMatchRunning } = require('../jobs/matchJobs.job');
 
 const generateJobHash = (title, company, location) =>
   crypto.createHash('md5').update(`${title}-${company}-${location}`).digest('hex');
@@ -243,14 +244,24 @@ const runAshbyForUser = async (user) => {
 };
 
 // GET /api/admin/users
+// `jobsMatched`/`topScore` are scoped to matcherVersion: MATCHER_VERSION —
+// deliberately NOT a raw count/max over every UserJob ever created for this
+// user. Without this filter, both numbers could reflect a record scored
+// under a PREVIOUS matching algorithm that the bounded version sweep
+// (services/jobMatcher.service.js) hasn't reprocessed yet — exactly the
+// false-positive incident this scoping prevents from silently resurfacing
+// here (e.g. a stale score of 88 for a job the current algorithm correctly
+// rejects at 0, displayed as if it were still a current, verified match).
+// This is a read-only query refinement — it changes what the admin UI
+// DISPLAYS, not any stored score, matcherVersion, or matching behavior.
 const listUsers = async (_req, res) => {
   try {
     const users = await User.find().select('-password').sort({ createdAt: -1 });
 
     const withStats = await Promise.all(
       users.map(async (u) => {
-        const jobCount = await UserJob.countDocuments({ userId: u._id });
-        const top = await UserJob.findOne({ userId: u._id }).sort({ score: -1 });
+        const jobCount = await UserJob.countDocuments({ userId: u._id, matcherVersion: MATCHER_VERSION });
+        const top = await UserJob.findOne({ userId: u._id, matcherVersion: MATCHER_VERSION }).sort({ score: -1 });
         return {
           _id: u._id,
           name: u.name,
@@ -277,6 +288,14 @@ const listUsers = async (_req, res) => {
 };
 
 // GET /api/admin/users/:id
+// Read-only — never rescores anything from a page view. `matcherVersion` and
+// the derived `stale` flag are included per record (not filtered out) so an
+// admin investigating a user can see BOTH current and historical/stale
+// results — stale ones are labeled, not hidden, which is what makes this
+// view still useful for debugging exactly the kind of incident that led
+// here (e.g. confirming a since-corrected score really was stale, not just
+// silently disappeared). `currentMatcherVersion` is included so the frontend
+// never has to hardcode what "current" means.
 const getUserDetail = async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select('-password');
@@ -289,8 +308,11 @@ const getUserDetail = async (req, res) => {
 
     res.json({
       user,
+      currentMatcherVersion: MATCHER_VERSION,
       jobs: userJobs.map((uj) => ({
         score: uj.score,
+        matcherVersion: uj.matcherVersion,
+        stale: uj.matcherVersion !== MATCHER_VERSION,
         emailed: uj.emailed,
         saved: uj.saved,
         applied: uj.applied,
@@ -371,14 +393,67 @@ const updateEmailSchedule = async (req, res) => {
   }
 };
 
-// POST /api/admin/fix-greenhouse
-// Strips HTML from all existing Greenhouse job descriptions, then re-scores every UserJob that references them
-const fixGreenhouseDescriptions = async (_req, res) => {
-  try {
-    const ghJobs = await Job.find({ source: 'greenhouse' });
-    let jobsFixed = 0;
+// Bounded batch size for the Greenhouse HTML fix sweep — same order of
+// magnitude as jobMatcher.service.js's PENDING_BATCH_SIZE (200), so one
+// invocation's work is comparable to what the normal pending-match batch
+// already does per hourly tick.
+const GREENHOUSE_FIX_BATCH_SIZE = 200;
+const GREENHOUSE_FIX_CURSOR_KEY = 'greenhouseHtmlFixCursor';
 
-    for (const job of ghJobs) {
+// In-process guards (same pattern as jobs/matchJobs.job.js's `running` flag)
+// — prevent two concurrent admin clicks (or a click during an already-running
+// batch) from doing redundant or overlapping work. Per-process, not
+// distributed — sufficient here since these are manually-triggered admin
+// actions, not something expected to run from multiple processes at once.
+let fixGreenhouseRunning = false;
+let versionSweepRunning = false;
+
+// POST /api/admin/fix-greenhouse
+//
+// Bounded, resumable maintenance sweep — processes at most
+// GREENHOUSE_FIX_BATCH_SIZE Greenhouse jobs per call, tracked via a
+// persisted cursor (Config key GREENHOUSE_FIX_CURSOR_KEY), not all of them
+// in one request. Re-run this endpoint to advance through the collection;
+// it wraps back to the start once a full pass completes.
+//
+// Still necessary for a narrow case even after the Greenhouse ingestion fix
+// (legacy identity upgrade + corrected stripHtml, both committed): those
+// fixes only reach a job the next time its board is actually re-fetched. A
+// CLOSED or EXPIRED posting is never re-fetched again, yet its description
+// can remain visible indefinitely in a user's own saved/applied history
+// (see job.controller.js) — this sweep is what can still clean that up.
+// Closed/expired jobs are deliberately INCLUDED in its scope for exactly
+// that reason (not reprocessed without justification — this is the
+// justification), not excluded as "obsolete."
+//
+// Cursor only advances after this batch's writes all succeed — a failure
+// partway through leaves it exactly where it was, so a retry safely redoes
+// the same batch (re-cleaning an already-clean description is a no-op).
+const fixGreenhouseDescriptions = async (_req, res) => {
+  if (fixGreenhouseRunning) {
+    return res.status(409).json({ message: 'A Greenhouse HTML fix batch is already running — try again shortly.' });
+  }
+  fixGreenhouseRunning = true;
+  try {
+    const cursorDoc = await Config.findOne({ key: GREENHOUSE_FIX_CURSOR_KEY });
+    const cursorId = cursorDoc?.value || null;
+
+    const scopeFilter = { source: 'greenhouse' };
+    let batch = await Job.find(cursorId ? { ...scopeFilter, _id: { $gt: cursorId } } : scopeFilter)
+      .sort({ _id: 1 })
+      .limit(GREENHOUSE_FIX_BATCH_SIZE);
+
+    // Reached the end of a pass (cursor was set, but nothing comes after it)
+    // — wrap around so this stays a repeatable "run it occasionally"
+    // maintenance action rather than going permanently idle after one pass.
+    let wrapped = false;
+    if (batch.length === 0 && cursorId) {
+      batch = await Job.find(scopeFilter).sort({ _id: 1 }).limit(GREENHOUSE_FIX_BATCH_SIZE);
+      wrapped = true;
+    }
+
+    let jobsFixed = 0;
+    for (const job of batch) {
       const clean = stripHtml(job.description);
       if (clean !== job.description) {
         job.description = clean;
@@ -387,14 +462,15 @@ const fixGreenhouseDescriptions = async (_req, res) => {
       }
     }
 
-    // Re-score all UserJob records that point to greenhouse jobs. Never
-    // deletes — a record that now scores 0 is simply updated to 0 and left for
-    // the existing score-threshold filters (listings, email digest) to
-    // exclude, preserving any saved/applied/emailed history on it intact.
-    // Orphaned records (job hard-deleted) are left untouched too — nothing to
-    // rescore them against, and deleting isn't this endpoint's job.
-    const ghJobIds = ghJobs.map((j) => j._id);
-    const userJobs = await UserJob.find({ jobId: { $in: ghJobIds } }).populate('userId').populate('jobId');
+    // Re-score only THIS batch's UserJob records — bounded by construction,
+    // since `batch` is already capped above. Never deletes — a record that
+    // now scores 0 is simply updated to 0, preserving any saved/applied/
+    // emailed history on it intact. Orphaned records are skipped, not
+    // touched.
+    const batchJobIds = batch.map((j) => j._id);
+    const userJobs = batchJobIds.length
+      ? await UserJob.find({ jobId: { $in: batchJobIds } }).populate('userId').populate('jobId')
+      : [];
 
     const ops = [];
     let skippedOrphaned = 0;
@@ -410,59 +486,86 @@ const fixGreenhouseDescriptions = async (_req, res) => {
         },
       });
     }
-
     if (ops.length) await UserJob.bulkWrite(ops);
 
-    res.json({ message: 'Done', jobsFixed, rescored: ops.length, skippedOrphaned });
+    const newCursor = batch.length ? String(batch[batch.length - 1]._id) : null;
+    await Config.updateOne({ key: GREENHOUSE_FIX_CURSOR_KEY }, { $set: { value: newCursor || '' } }, { upsert: true });
+
+    const remainingInPass = newCursor
+      ? await Job.countDocuments({ ...scopeFilter, _id: { $gt: newCursor } })
+      : 0;
+
+    res.json({
+      message: wrapped ? 'Completed a full pass earlier — started a new pass with this batch' : 'Batch complete',
+      batchSize: batch.length,
+      jobsFixed,
+      rescored: ops.length,
+      skippedOrphaned,
+      remainingInPass,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  } finally {
+    fixGreenhouseRunning = false;
   }
 };
 
 // POST /api/admin/rescore-all
-// Re-scores ALL UserJob records across all users using the current scoring algorithm.
-// Never deletes a record, even one that now scores 0 — see fixGreenhouseDescriptions
-// above for why: a saved/applied record's history must survive a rescore.
+//
+// Runs ONE bounded batch of the SAME background version sweep that already
+// runs automatically every hour (services/jobMatcher.service.js's
+// sweepStaleMatcherVersions, called from jobs/matchJobs.job.js's cron tick)
+// — not a second, independent, unbounded implementation. This used to load
+// every onboarded user and every one of their UserJob records in a single
+// synchronous pass; that has been removed in favor of reusing the existing
+// bounded mechanism, so there is exactly one place that "re-score stale
+// records" logic lives.
+//
+// A manual click here simply advances the SAME bounded batch size
+// (VERSION_SWEEP_BATCH_SIZE) immediately, rather than waiting for the next
+// hourly tick — click again (or wait) to work through a larger backlog.
 const rescoreAllUsers = async (_req, res) => {
+  if (versionSweepRunning) {
+    return res.status(409).json({ message: 'A version-sweep batch is already running — try again shortly.' });
+  }
+  versionSweepRunning = true;
   try {
-    const users = await User.find({ isOnboarded: true, isEmailVerified: true });
-    let totalRescored = 0;
-    let totalSkippedOrphaned = 0;
-
-    for (const user of users) {
-      const userJobs = await UserJob.find({ userId: user._id }).populate('jobId');
-      const ops = [];
-      const userFingerprint = computeUserFingerprint(user);
-
-      for (const uj of userJobs) {
-        if (!uj.jobId) { totalSkippedOrphaned++; continue; }
-        const { score, matchedSkills, matchedRole, reasons } = scoreJobDetailed(user, uj.jobId);
-        const jobFingerprint = computeJobFingerprint(uj.jobId);
-        ops.push({
-          updateOne: {
-            filter: { _id: uj._id },
-            update: { $set: { score, matchedSkills, matchedRole, reasons, matcherVersion: MATCHER_VERSION, userFingerprint, jobFingerprint } },
-          },
-        });
-        totalRescored++;
-      }
-
-      if (ops.length) await UserJob.bulkWrite(ops);
-    }
-
-    res.json({ message: 'Done', rescored: totalRescored, skippedOrphaned: totalSkippedOrphaned });
+    const rescored = await sweepStaleMatcherVersions();
+    const remainingBacklog = await getMatcherVersionBacklog();
+    res.json({
+      message: remainingBacklog > 0
+        ? `Batch complete — ${remainingBacklog} record(s) still stale, run again or wait for the next automatic hourly sweep`
+        : 'Batch complete — no stale records remain',
+      rescored,
+      remainingBacklog,
+    });
   } catch (err) {
     res.status(500).json({ message: err.message });
+  } finally {
+    versionSweepRunning = false;
   }
 };
 
 // POST /api/admin/backfill-matches
-// Scores every active user against recent jobs, creating any MISSING UserJob records.
-// Fixes users who never got matched to jobs due to the fetch/match timing window.
+//
+// Runs the SAME orchestration the scheduled match cron runs at :15 past
+// every hour (jobs/matchJobs.job.js's runMatchTick) — age-based expiry sweep,
+// the bounded matching pass, AND the bounded version sweep, with the same
+// MatchRun tracking. This used to call matchJobsForAllUsers() directly,
+// which skipped the expiry and version-sweep steps and left no MatchRun
+// record of a manual run — now it's the full cycle, on demand, indistin-
+// guishable in its effects (and now in its tracking) from a normal tick.
+//
+// runMatchTick() has its own `running` guard (jobs/matchJobs.job.js) shared
+// with the scheduled cron itself — a manual click here and a real cron tick
+// can never run concurrently with each other.
 const backfillMatches = async (_req, res) => {
+  if (isMatchRunning()) {
+    return res.status(409).json({ message: 'A match cycle is already running (scheduled or manual) — try again shortly.' });
+  }
   try {
-    await matchJobsForAllUsers();
-    res.json({ message: 'Backfill complete — check server logs for new match count' });
+    await runMatchTick();
+    res.json({ message: 'Match cycle complete — see Overview or the MatchRun history in Analytics for details.' });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }

@@ -97,4 +97,10 @@ const startMatchJobsCron = () => {
 
 const isMatchRunning = () => running;
 
-module.exports = { startMatchJobsCron, isMatchRunning };
+// Exported so an admin-triggered "run now" action can invoke the EXACT same
+// orchestration the scheduled cron uses — same expiry sweep, same bounded
+// matching pass, same bounded version sweep, same MatchRun tracking, and the
+// same `running` guard above (shared module state — a manual call and a
+// cron tick can never run concurrently with each other, not just with
+// themselves).
+module.exports = { startMatchJobsCron, isMatchRunning, runMatchTick };

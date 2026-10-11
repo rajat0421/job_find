@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import adminApi from '../services/adminApi';
+import AdminNav from '../components/AdminNav';
 
 const toIST = (iso) =>
   new Date(iso).toLocaleString('en-IN', {
@@ -11,19 +11,7 @@ const toIST = (iso) =>
 
 const TABS = ['pending', 'approved', 'declined'];
 
-const NavBtn = ({ active, onClick, children }) => (
-  <button
-    onClick={onClick}
-    className={`text-sm px-3 py-1.5 rounded-lg transition-colors font-medium ${
-      active ? 'text-violet-400 bg-violet-500/10' : 'text-slate-500 hover:text-slate-200 hover:bg-white/5'
-    }`}
-  >
-    {children}
-  </button>
-);
-
 const AdminFeedback = () => {
-  const navigate = useNavigate();
   const [feedbacks, setFeedbacks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('pending');
@@ -57,27 +45,17 @@ const AdminFeedback = () => {
 
   return (
     <div className="min-h-screen bg-[#0a0a12]">
-      <div className="bg-[#12121c] border-b border-white/10 px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <span className="text-xl font-bold text-violet-400">JobFind</span>
-          <span className="text-xs bg-red-500/10 text-red-400 px-2 py-0.5 rounded-full font-medium">Admin</span>
-          <nav className="flex items-center gap-1 ml-4">
-            <NavBtn onClick={() => navigate('/admin')}>Users</NavBtn>
-            <NavBtn onClick={() => navigate('/admin/analytics')}>Analytics</NavBtn>
-            <NavBtn onClick={() => navigate('/admin/jobs')}>Jobs</NavBtn>
-            <NavBtn onClick={() => navigate('/admin/logs')}>API Logs</NavBtn>
-            <NavBtn onClick={() => navigate('/admin/email-logs')}>Email Logs</NavBtn>
-            <NavBtn active>Feedback</NavBtn>
-            <NavBtn onClick={() => navigate('/admin/companies')}>Companies</NavBtn>
-          </nav>
-        </div>
-        <button
-          onClick={() => { localStorage.removeItem('adminToken'); window.location.href = '/admin'; }}
-          className="text-sm text-red-400 hover:text-red-300 font-medium"
-        >
-          Exit admin
-        </button>
-      </div>
+      <AdminNav
+        active="feedback"
+        right={
+          <button
+            onClick={() => { localStorage.removeItem('adminToken'); window.location.href = '/admin'; }}
+            className="text-sm text-red-400 hover:text-red-300 font-medium"
+          >
+            Exit admin
+          </button>
+        }
+      />
 
       <div className="max-w-3xl mx-auto px-4 py-8">
         <div className="mb-6">

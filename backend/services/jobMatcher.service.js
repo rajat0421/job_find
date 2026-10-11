@@ -10,7 +10,16 @@ const UserJob = require('../models/UserJob');
 // code changes that don't alter scoring output. Bumping it marks every
 // existing UserJob stale, which the bounded version sweep below then works
 // through gradually — so treat it as a meaningful, infrequent event.
-const MATCHER_VERSION = 1;
+//
+// 1 → 2: fixes a real false-positive incident (role matching treated a bare
+// "backend" substring inside "Software Architect, Java Backend" as an exact
+// role match; experience detection found "junior" inside "mentor junior
+// engineers" and labeled a 15+-year Principal/Architect role "Fresher /
+// junior friendly" for a 1-year-experience user). Existing UserJob rows
+// computed under version 1 must be rescored — unchanged fingerprints alone
+// would never trigger that, since neither the user's profile nor the job's
+// content actually changed; only the scoring code did.
+const MATCHER_VERSION = 2;
 
 // Skill "families": keys are normalized skill names (lowercase, no spaces/dots/hyphens).
 // Values are lowercase substrings to look for in the job text — including a skill's
@@ -96,15 +105,30 @@ const SKILL_SYNONYMS = {
 
 const normalizeSkill = (skill) => skill.toLowerCase().replace(/[.\s-]/g, '');
 
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Word-boundary-aware containment check — unlike a bare `.includes()`, this
+// will not match a short token like "ad" inside "leading"/"already", "go"
+// inside "going"/"goal", "ml" inside "html", or "ios" inside "scenarios".
+// Real incident: "Active Directory"'s synonym "ad" matched the Okta
+// architect posting purely via the word "leading" ("le-AD-ing"), crediting
+// an unrelated skill. Safe for multi-word/punctuated tokens too (e.g.
+// "active directory", "node.js") — `(?<![a-z0-9])`/`(?![a-z0-9])` only
+// forbids an adjacent letter/digit immediately touching the token, which a
+// normal word boundary inside the token itself (a space, a dot) doesn't
+// trigger.
+const hasToken = (text, token) =>
+  new RegExp(`(?<![a-z0-9])${escapeRegExp(token)}(?![a-z0-9])`, 'i').test(text);
+
 // Returns the list of user skills that appear in the job text (name or synonym)
 const getMatchedSkills = (userSkills, jobText) => {
   const text = jobText.toLowerCase();
   const matched = [];
   for (const skill of userSkills) {
     const n = normalizeSkill(skill);
-    if (text.includes(n)) { matched.push(skill); continue; }
+    if (hasToken(text, n)) { matched.push(skill); continue; }
     const synonyms = SKILL_SYNONYMS[n] || [];
-    if (synonyms.some((s) => text.includes(s))) matched.push(skill);
+    if (synonyms.some((s) => hasToken(text, s))) matched.push(skill);
   }
   return matched;
 };
@@ -147,6 +171,29 @@ const GENERIC_TECH_KEYWORDS = [
   'analyst', 'scientist', 'administrator', 'sde', 'swe', 'devops', 'technical',
 ];
 
+// Job-family-changing title words: architecture, director/VP/executive-level
+// positions genuinely belong to a different track than a plain IC Developer/
+// Engineer role, even when the title also happens to mention a role keyword
+// in passing. Real incident: "Software Architect, Java Backend" contains the
+// bare word "backend" and used to score an EXACT match for a "Backend
+// Developer" search — it's an Architect role, not a Backend Developer one.
+// Deliberately excludes pure seniority modifiers ("principal", "staff",
+// "senior", "lead") — those describe HOW SENIOR an IC role is, not a
+// DIFFERENT job family, so "Principal Backend Engineer" is still correctly
+// an exact Backend match (seniority/experience fit is handled separately —
+// see SENIOR_TITLE_PATTERNS and scoreExperience below).
+const ROLE_FAMILY_OVERRIDE_WORDS = ['architect', 'director', 'vice president', 'vp ', 'head of', 'chief'];
+
+// An override word only disqualifies a keyword match when it's NOT already
+// part of that same matched keyword — e.g. "director" inside the matched
+// keyword "director of engineering" (a deliberate, correct exact match for
+// "Engineering Manager") must not disqualify itself. An override word
+// appearing elsewhere in the title, unexplained by the match itself (e.g.
+// "architect" alongside a bare "backend" hit), means the title most likely
+// belongs to a materially different position that merely mentions the keyword.
+const hasUnexplainedOverride = (titleLower, matchedKeyword) =>
+  ROLE_FAMILY_OVERRIDE_WORDS.some((w) => titleLower.includes(w) && !matchedKeyword.includes(w.trim()));
+
 // Graded role affinity (0..40) instead of a hard pass/fail gate.
 //   • exact match to one of the user's roles → 40
 //   • related tech role (generic keyword)    → 22  (e.g. Backend job for a Frontend user)
@@ -158,7 +205,8 @@ const scoreRole = (titleLower, roles) => {
   if (roles.length) {
     for (const r of roles) {
       const keywords = ROLE_KEYWORDS[r] || [r.toLowerCase()];
-      if (keywords.some((k) => titleLower.includes(k))) return { score: 40, matchedRole: r };
+      const exactMatch = keywords.find((k) => titleLower.includes(k) && !hasUnexplainedOverride(titleLower, k));
+      if (exactMatch) return { score: 40, matchedRole: r };
     }
     if (GENERIC_TECH_KEYWORDS.some((k) => titleLower.includes(k))) return { score: 22, matchedRole: null };
     return { score: 0, matchedRole: null };
@@ -181,80 +229,272 @@ const getUserLevel = (exp) => {
   return           { primary: 'senior',  adjacent: 'mid' };
 };
 
-// Caps score below email threshold when a junior user's title signals a senior/IC title
-// (management titles are already eliminated by role filter or blacklist above)
-const SENIOR_TITLE_PATTERNS = ['senior', 'lead', 'sr.', 'principal', 'staff'];
+// Caps score below email threshold when a junior user's title OR description
+// signals a senior/IC-senior role. "architect" was missing here — a real
+// incident: "Software Architect, Java Backend" has none of the original
+// words below in its TITLE, so a junior user's score was never capped despite
+// the role requiring 15+ years.
+const SENIOR_TITLE_PATTERNS = ['senior', 'lead', 'sr.', 'principal', 'staff', 'architect'];
+
+// ── "Other people" references ───────────────────────────────────────────────
+// A description mentioning who the role mentors/manages/works alongside is
+// evidence about THOSE people's level, never about the advertised position's
+// own level. Real incident: "Lead and mentor junior engineers" made a 15+
+// year Principal/Architect role read as "Fresher / junior friendly" purely
+// because the word "junior" appeared, with zero regard for context.
+const PEOPLE_REFERENCE_VERBS = [
+  'mentor', 'mentoring', 'manage', 'managing', 'lead', 'leading', 'coach', 'coaching',
+  'supervise', 'supervising', 'guide', 'guiding', 'train', 'training', 'hire', 'hiring',
+  'onboard', 'onboarding', 'support', 'supporting', 'collaborate with', 'collaborating with',
+  'work with', 'working with', 'partner with', 'partnering with', 'alongside',
+];
+const PEOPLE_REFERENCE_NOUNS = [
+  'engineer', 'engineers', 'developer', 'developers', 'colleague', 'colleagues', 'staff',
+  'team member', 'team members', 'peer', 'peers', 'talent', 'candidate', 'candidates',
+  'hire', 'hires', 'report', 'reports', 'mentee', 'mentees', 'teammate', 'teammates',
+];
+const OTHER_PEOPLE_RE = new RegExp(
+  `\\b(?:${PEOPLE_REFERENCE_VERBS.map(escapeRegExp).join('|')})\\b(?:\\s+\\w+){0,4}\\s+(?:junior|senior)\\b` +
+  `(?:\\s+(?:${PEOPLE_REFERENCE_NOUNS.map(escapeRegExp).join('|')}))?`,
+  'gi'
+);
+
+// Returns `lowerText` with every "mentor junior engineers"-shaped reference
+// blanked out (same length, so later substring/index logic is unaffected),
+// so seniority/experience keyword scanning never mistakes a reference to
+// OTHER people's level for the advertised position's own level. Never
+// mutates the input.
+const maskOtherPeopleReferences = (lowerText) =>
+  lowerText.replace(OTHER_PEOPLE_RE, (m) => ' '.repeat(m.length));
+
+// ── Explicit minimum-experience extraction ──────────────────────────────────
+// Deliberately conservative and narrowly scoped to the handful of phrasings
+// actually seen in real postings — "15+ years", "15 years of experience",
+// "minimum of 15 years", "at least 15 years", and ranges like "2-4 years"
+// (whose LOWER bound is the real floor). Every pattern anchors on the literal
+// word "year(s)" immediately next to the number — this is what keeps it from
+// firing on unrelated numbers ("20 engineers", "500ms", a requisition code)
+// that merely happen to share a sentence with the real requirement. This is
+// intentionally NOT a general-purpose NLP extractor — ambiguous phrasings
+// that don't match one of these forms are left unrecognized rather than
+// guessed at (see scoreExperience below for what "unrecognized" then does).
+const RANGE_YEARS_RE = /\b(\d{1,2})\s*(?:-|to)\s*(\d{1,2})\s*\+?\s*years?\b/gi;
+const PLUS_YEARS_RE = /\b(\d{1,2})\s*\+\s*years?\b/gi;
+const MINIMUM_YEARS_RE = /\b(?:minimum\s+of\s+|at\s+least\s+)(\d{1,2})\s*\+?\s*years?\b/gi;
+const YEARS_OF_EXPERIENCE_RE = /\b(\d{1,2})\s*\+?\s*years?\s+(?:of\s+)?(?:[a-z]+\s+){0,3}(?:experience|development|engineering|work)\b/gi;
+
+// Returns the highest-confidence stated minimum (the role's real floor, when
+// multiple experience mentions exist — e.g. a posting listing both a general
+// "15+ years" bar and a narrower "4+ years in AWS" nice-to-have), or `null`
+// if nothing recognizable was found. Never invents a number from an isolated
+// digit — every candidate must match one of the explicit patterns above.
+const extractMinExperienceYears = (text) => {
+  const candidates = [];
+  let scrubbed = text;
+  let m;
+  const rangeRe = new RegExp(RANGE_YEARS_RE);
+  while ((m = rangeRe.exec(text))) {
+    candidates.push(Number(m[1])); // the range's lower bound is its real floor
+    scrubbed = scrubbed.replace(m[0], ' '.repeat(m[0].length)); // don't let the range's own numbers double-feed the patterns below
+  }
+  for (const pattern of [PLUS_YEARS_RE, MINIMUM_YEARS_RE, YEARS_OF_EXPERIENCE_RE]) {
+    const re = new RegExp(pattern);
+    while ((m = re.exec(scrubbed))) candidates.push(Number(m[1]));
+  }
+  return candidates.length ? Math.max(...candidates) : null;
+};
+
+// ── Experience/seniority scoring (Phase 3/4 fix) ────────────────────────────
+// Returns { eligible, points, reason, detail, statedMinYears, capped }.
+// `eligible: false` is a hard gate — an explicit, high-confidence minimum-
+// years requirement the user doesn't meet must override role/skill overlap
+// entirely, not just reduce points (see computeMatchScore below, which short-
+// circuits the whole score to 0 when this fires). The softer `capped` path
+// (title/description signals seniority but no extractable number) keeps the
+// job visible in-app at a reduced score, below the email threshold, exactly
+// as the pre-existing junior-title cap already did.
+const scoreExperience = (user, titleLower, maskedText) => {
+  const userExp = user.experience ?? 0;
+  const { primary, adjacent } = getUserLevel(userExp);
+
+  const statedMinYears = extractMinExperienceYears(maskedText);
+  if (statedMinYears !== null && userExp < statedMinYears) {
+    return {
+      eligible: false, points: 0, reason: null, capped: false, statedMinYears,
+      detail: `Requires ${statedMinYears}+ years — profile has ${userExp}`,
+    };
+  }
+
+  const juniorHints = EXP_HINTS.junior.filter((h) => maskedText.includes(h));
+  const midHints = EXP_HINTS.mid.filter((h) => maskedText.includes(h));
+  const seniorHints = EXP_HINTS.senior.filter((h) => maskedText.includes(h));
+  const hasAnyHint = juniorHints.length || midHints.length || seniorHints.length;
+
+  let points;
+  let reason = null;
+  let hit = null;
+  if (EXP_HINTS[primary].some((h) => maskedText.includes(h))) {
+    points = 15;
+    hit = EXP_HINTS[primary].find((h) => maskedText.includes(h));
+    reason = primary === 'junior' ? 'Fresher / junior friendly' : `Suited to ${primary}-level experience`;
+  } else if (adjacent && EXP_HINTS[adjacent].some((h) => maskedText.includes(h))) {
+    points = 8;
+    hit = EXP_HINTS[adjacent].find((h) => maskedText.includes(h));
+  } else if (!hasAnyHint) {
+    points = 7; // no experience level mentioned anywhere (after masking other-people refs) — neutral, NOT junior-friendly evidence
+  } else {
+    points = 0; // a different level is explicitly signaled
+  }
+
+  // Title-level seniority (now including "architect" — see SENIOR_TITLE_PATTERNS)
+  // OR a genuine senior self-description surviving the other-people mask
+  // (e.g. "Principal Software Engineer" in the body, not just the title) caps
+  // a junior user's score, exactly like before, but no longer relies on the
+  // title alone.
+  const seniorSignal = SENIOR_TITLE_PATTERNS.some((p) => titleLower.includes(p)) || seniorHints.length > 0;
+  let capped = false;
+  if (primary === 'junior' && seniorSignal) {
+    capped = true;
+    if (reason === 'Fresher / junior friendly') reason = null; // never claim junior-friendly for a role that independently signals seniority
+  }
+
+  return { eligible: true, points, reason, capped, statedMinYears: null, detail: hit ? `Level match — "${hit}" (user is ${primary})` : (hasAnyHint ? `Wrong level — job mentions a different experience tier (user is ${primary})` : 'No experience level mentioned — neutral') };
+};
+
+// ── Shared scoring core ──────────────────────────────────────────────────────
+// Single implementation of record for BOTH scoreJobDetailed (the lean,
+// production path) and scoreJobWithBreakdown (the admin debug view) — see
+// Phase 6: having two independent copies of this logic is exactly how a
+// future fix could silently apply to only one of them.
+const computeMatchScore = (user, job) => {
+  const titleLower = (job.title || '').toLowerCase();
+  const rawText = `${job.title || ''} ${job.description || ''}`.toLowerCase();
+  const maskedText = maskOtherPeopleReferences(rawText);
+  const parts = {};
+
+  // ── Role (0..40, graded — not a hard gate) ──────────────────────────────────
+  const roles = user.desiredRoles || [];
+  const role = scoreRole(titleLower, roles);
+  if (role.score === 0 && TITLE_BLACKLIST.some((t) => titleLower.includes(t))) {
+    return {
+      score: 0, eligible: false, ineligibleReason: 'blacklisted_title',
+      matchedRole: null, matchedSkills: [], reasons: [],
+      parts: { role: { score: 0, max: 40, detail: 'Non-tech title (blacklisted), no role affinity' } },
+    };
+  }
+  parts.role = {
+    score: role.score, max: 40, matchedRole: role.matchedRole,
+    detail: role.matchedRole
+      ? `Exact match → ${role.matchedRole}`
+      : role.score > 0
+        ? (roles.length ? 'Related tech role (not an exact role match)' : 'No role set — tech title, neutral')
+        : (roles.length ? `No affinity with: ${roles.join(', ')}` : 'No role set, no tech signal'),
+  };
+
+  // ── Skills (gate — must match ≥1 if user has skills; up to 30 pts) ─────────
+  let matchedSkills = [];
+  if (user.skills?.length) {
+    matchedSkills = getMatchedSkills(user.skills, rawText);
+    if (matchedSkills.length === 0) {
+      return {
+        score: 0, eligible: false, ineligibleReason: 'no_skill_overlap',
+        matchedRole: role.matchedRole, matchedSkills: [], reasons: [],
+        parts: { ...parts, skills: { score: 0, max: 30, detail: `0/${user.skills.length} skills found — filtered out` } },
+      };
+    }
+    const pts = Math.min(15 + (matchedSkills.length - 1) * 5, 30);
+    parts.skills = { score: pts, max: 30, matched: matchedSkills, total: user.skills.length, detail: `${matchedSkills.length}/${user.skills.length} matched: ${matchedSkills.join(', ')}` };
+  } else {
+    parts.skills = { score: 0, max: 30, detail: 'No skills on profile' };
+  }
+
+  // ── Explicit experience-requirement eligibility gate (Phase 3) ─────────────
+  // Placed before location/salary/soft-experience points accumulate, so an
+  // unambiguous requirement mismatch overrides role/skill similarity entirely
+  // — the exact fix for the Okta incident (88/100 despite a 15+-year
+  // requirement against a 1-year profile).
+  const userExp = user.experience ?? 0;
+  const earlyMinYears = extractMinExperienceYears(maskedText);
+  if (earlyMinYears !== null && userExp < earlyMinYears) {
+    return {
+      score: 0, eligible: false, ineligibleReason: 'experience_requirement',
+      matchedRole: role.matchedRole, matchedSkills, reasons: [],
+      parts: { ...parts, experience: { score: 0, max: 15, detail: `Requires ${earlyMinYears}+ years — profile has ${userExp}`, statedMinYears: earlyMinYears } },
+      cap: `Ineligible — requires ${earlyMinYears}+ years, profile has ${userExp}`,
+    };
+  }
+
+  let score = parts.role.score + parts.skills.score;
+  const reasons = [];
+  if (role.matchedRole) reasons.push(`Fits your ${role.matchedRole} role`);
+  else if (role.score > 0 && roles.length) reasons.push('Related tech role');
+  if (matchedSkills.length) reasons.push(`Matches your ${matchedSkills.slice(0, 3).join(', ')} skill${matchedSkills.length > 1 ? 's' : ''}`);
+
+  // ── Location (10 pts) ───────────────────────────────────────────────────────
+  const jobLoc = (job.location || '').toLowerCase();
+  const isRemote = job.workplaceType === 'remote' || jobLoc.includes('remote');
+  const isHybrid = job.workplaceType === 'hybrid' || jobLoc.includes('hybrid');
+  const locHit = (user.locations || []).find((l) => jobLoc.includes(l.toLowerCase()));
+  if (locHit) {
+    parts.location = { score: 10, max: 10, detail: `Exact match — "${locHit}" in job location` };
+    score += 10; reasons.push(`Located in ${locHit}`);
+  } else if (isRemote && user.remotePreference !== 'office') {
+    parts.location = { score: 8, max: 10, detail: `Job is remote${job.workplaceType ? ' (workplaceType)' : ''} — near match` };
+    score += 8; reasons.push('Remote position');
+  } else if (isHybrid && user.remotePreference !== 'office') {
+    parts.location = { score: 6, max: 10, detail: 'Job is hybrid — partial match' };
+    score += 6; reasons.push('Hybrid position');
+  } else {
+    parts.location = { score: 0, max: 10, detail: `No match — job: "${job.location || 'unspecified'}", user wants: ${user.locations?.join(', ') || 'any'}` };
+  }
+
+  // ── Salary (5 pts) ──────────────────────────────────────────────────────────
+  if (user.salary) {
+    const low = user.salary * 0.70, high = user.salary * 1.50;
+    const { salaryMax: jMax, salaryMin: jMin } = job;
+    const fmt = (v) => `₹${(v / 100000).toFixed(1)}L`;
+    if (jMax && jMin) {
+      if (jMax >= low && jMin <= high) { parts.salary = { score: 5, max: 5, detail: `Job ${fmt(jMin)}–${fmt(jMax)} fits expectation` }; score += 5; }
+      else { parts.salary = { score: 0, max: 5, detail: `Job ${fmt(jMin)}–${fmt(jMax)} outside user expectation ${fmt(user.salary)}` }; }
+    } else if (jMax) {
+      if (jMax >= low) { parts.salary = { score: 5, max: 5, detail: `Job max ${fmt(jMax)} meets expectation` }; score += 5; }
+      else { parts.salary = { score: 0, max: 5, detail: `Job max ${fmt(jMax)} below expectation` }; }
+    } else if (jMin) {
+      if (jMin <= high) { parts.salary = { score: 5, max: 5, detail: `Job min ${fmt(jMin)} within range` }; score += 5; }
+      else { parts.salary = { score: 0, max: 5, detail: `Job min ${fmt(jMin)} above expectation` }; }
+    } else {
+      parts.salary = { score: 3, max: 5, detail: 'No salary listed — neutral' }; score += 3;
+    }
+  } else {
+    parts.salary = { score: 3, max: 5, detail: 'User has no salary expectation — neutral' }; score += 3;
+  }
+
+  // ── Experience (15 pts) + junior-cap safeguard ─────────────────────────────
+  const exp = scoreExperience(user, titleLower, maskedText);
+  parts.experience = { score: exp.points, max: 15, detail: exp.detail, statedMinYears: exp.statedMinYears };
+  score += exp.points;
+  if (exp.reason) reasons.push(exp.reason);
+
+  let cap;
+  if (exp.capped) {
+    score = Math.min(score, 30);
+    cap = 'Capped at 30 — junior user, senior title/description';
+  }
+
+  return {
+    score: Math.min(score, 100), eligible: true, ineligibleReason: null,
+    matchedRole: role.matchedRole, matchedSkills, reasons, parts, cap,
+  };
+};
 
 // ── Scoring weights: role(40) + skills(30) + exp(15) + location(10) + salary(5)
 // Returns { score, matchedSkills, matchedRole, reasons } — a human-readable
 // explanation stored alongside the score so the UI can show WHY a job matched.
+// Thin wrapper over computeMatchScore (see Phase 6) — preserves this exact
+// output contract unchanged.
 const scoreJobDetailed = (user, job) => {
-  const titleLower = (job.title || '').toLowerCase();
-  const text = `${job.title} ${job.description || ''}`.toLowerCase();
-  const empty = { score: 0, matchedSkills: [], matchedRole: null, reasons: [] };
-  const reasons = [];
-
-  // ── Step 1: Role (0..40, graded — not a hard gate) ───────────────────────────
-  const roles = user.desiredRoles || [];
-  const role = scoreRole(titleLower, roles);
-  // Backstop: only drop when there's NO role affinity AND the title is clearly non-tech
-  if (role.score === 0 && TITLE_BLACKLIST.some((t) => titleLower.includes(t))) return empty;
-  let score = role.score;
-  if (role.matchedRole) reasons.push(`Fits your ${role.matchedRole} role`);
-  else if (role.score > 0 && roles.length) reasons.push('Related tech role');
-
-  // ── Step 2: Skills (gate — must match ≥1 if user has skills; up to 30 pts) ────
-  let matchedSkills = [];
-  if (user.skills?.length) {
-    matchedSkills = getMatchedSkills(user.skills, text);
-    if (matchedSkills.length === 0) return empty; // skills are the core relevance signal
-    score += Math.min(15 + (matchedSkills.length - 1) * 5, 30); // 1→15, 2→20, 3→25, 4+→30
-    reasons.push(`Matches your ${matchedSkills.slice(0, 3).join(', ')} skill${matchedSkills.length > 1 ? 's' : ''}`);
-  }
-
-  // ── Step 3: Location (10 pts) ────────────────────────────────────────────────
-  const jobLoc = (job.location || '').toLowerCase();
-  // Prefer Lever's explicit workplaceType; fall back to scanning the location string
-  const isRemote = job.workplaceType === 'remote' || jobLoc.includes('remote');
-  const isHybrid = job.workplaceType === 'hybrid' || jobLoc.includes('hybrid');
-  const locHit = (user.locations || []).find((l) => jobLoc.includes(l.toLowerCase()));
-  if (locHit) { score += 10; reasons.push(`Located in ${locHit}`); }
-  else if (isRemote && user.remotePreference !== 'office') { score += 8; reasons.push('Remote position'); }
-  else if (isHybrid && user.remotePreference !== 'office') { score += 6; reasons.push('Hybrid position'); }
-
-  // ── Step 4: Salary (5 pts) ───────────────────────────────────────────────────
-  if (user.salary) {
-    const low = user.salary * 0.70;
-    const high = user.salary * 1.50;
-    const { salaryMax: jMax, salaryMin: jMin } = job;
-    if      (jMax && jMin) { if (jMax >= low && jMin <= high) score += 5; }
-    else if (jMax)         { if (jMax >= low)                 score += 5; }
-    else if (jMin)         { if (jMin <= high)                score += 5; }
-    else                   { score += 3; } // no salary listed = neutral
-  } else {
-    score += 3; // user hasn't set expectation = neutral
-  }
-
-  // ── Step 5: Experience (15 pts) ──────────────────────────────────────────────
-  const { primary, adjacent } = getUserLevel(user.experience ?? 0);
-  const allHints = Object.values(EXP_HINTS).flat();
-  const hasAnyHint = allHints.some((h) => text.includes(h));
-  if (EXP_HINTS[primary].some((h) => text.includes(h))) {
-    score += 15;
-    reasons.push(primary === 'junior' ? 'Fresher / junior friendly' : `Suited to ${primary}-level experience`);
-  } else if (adjacent && EXP_HINTS[adjacent].some((h) => text.includes(h))) {
-    score += 8;
-  } else if (!hasAnyHint) {
-    score += 7; // no experience level mentioned = neutral
-  }
-  // else: 0 — wrong level explicitly mentioned
-
-  // ── Step 6: Cap junior users for senior IC titles ────────────────────────────
-  if (primary === 'junior' && SENIOR_TITLE_PATTERNS.some((p) => titleLower.includes(p))) {
-    score = Math.min(score, 30);
-  }
-
-  return { score: Math.min(score, 100), matchedSkills, matchedRole: role.matchedRole, reasons };
+  const r = computeMatchScore(user, job);
+  return { score: r.score, matchedSkills: r.matchedSkills, matchedRole: r.matchedRole, reasons: r.reasons };
 };
 
 // Thin wrapper — most callers just need the number
@@ -570,101 +810,20 @@ const _matchJobsForUser = async (user, jobs, { updateExisting = false } = {}) =>
   return { created: toInsert.length, updated: ops.length, insertErrors, updateErrors };
 };
 
+// Thin wrapper over computeMatchScore (see Phase 6) — preserves this exact
+// output contract ({score, breakdown}) and every breakdown.<dimension>
+// {score,max,detail} shape the admin UI (AdminUserDetail.jsx) already reads,
+// plus `breakdown.cap` (a plain string, same field the admin UI already
+// renders as a warning banner) now covering BOTH the original junior-title
+// cap and the new explicit-experience-requirement ineligibility, and
+// `breakdown.eligible`/`breakdown.ineligibleReason` for the admin portal to
+// show precisely why a position passed or failed.
 const scoreJobWithBreakdown = (user, job) => {
-  const titleLower = job.title.toLowerCase();
-  const text = `${job.title} ${job.description || ''}`.toLowerCase();
-  const breakdown = {};
-
-  // ── Role (graded — exact 40 / related tech 15 / none 0) ──────────────────────
-  const roles = user.desiredRoles || [];
-  const role = scoreRole(titleLower, roles);
-  if (role.score === 0 && TITLE_BLACKLIST.some(t => titleLower.includes(t))) {
-    return { score: 0, breakdown: { role: { score: 0, max: 40, detail: 'Non-tech title (blacklisted), no role affinity' } } };
-  }
-  if (role.matchedRole) {
-    breakdown.role = { score: 40, max: 40, detail: `Exact match → ${role.matchedRole}` };
-  } else if (role.score > 0) {
-    breakdown.role = { score: role.score, max: 40, detail: roles.length ? 'Related tech role (not an exact role match)' : 'No role set — tech title, neutral' };
-  } else {
-    breakdown.role = { score: 0, max: 40, detail: roles.length ? `No affinity with: ${roles.join(', ')}` : 'No role set, no tech signal' };
-  }
-  let score = breakdown.role.score;
-
-  // ── Skills ──────────────────────────────────────────────────────────────────
-  if (user.skills?.length) {
-    const matched = getMatchedSkills(user.skills, text);
-    if (matched.length === 0) return { score: 0, breakdown: { ...breakdown, skills: { score: 0, max: 30, detail: `0/${user.skills.length} skills found — filtered out` } } };
-    const pts = Math.min(15 + (matched.length - 1) * 5, 30);
-    breakdown.skills = { score: pts, max: 30, matched, total: user.skills.length, detail: `${matched.length}/${user.skills.length} matched: ${matched.join(', ')}` };
-    score += pts;
-  } else {
-    breakdown.skills = { score: 0, max: 30, detail: 'No skills on profile' };
-  }
-
-  // ── Location ─────────────────────────────────────────────────────────────────
-  const jobLoc = (job.location || '').toLowerCase();
-  const isRemote = job.workplaceType === 'remote' || jobLoc.includes('remote');
-  const isHybrid = job.workplaceType === 'hybrid' || jobLoc.includes('hybrid');
-  const locHit = (user.locations || []).find(l => jobLoc.includes(l.toLowerCase()));
-  if (locHit) {
-    breakdown.location = { score: 10, max: 10, detail: `Exact match — "${locHit}" in job location` };
-    score += 10;
-  } else if (isRemote && user.remotePreference !== 'office') {
-    breakdown.location = { score: 8, max: 10, detail: `Job is remote${job.workplaceType ? ' (workplaceType)' : ''} — near match` };
-    score += 8;
-  } else if (isHybrid && user.remotePreference !== 'office') {
-    breakdown.location = { score: 6, max: 10, detail: 'Job is hybrid — partial match' };
-    score += 6;
-  } else {
-    breakdown.location = { score: 0, max: 10, detail: `No match — job: "${job.location || 'unspecified'}", user wants: ${user.locations?.join(', ') || 'any'}` };
-  }
-
-  // ── Salary ───────────────────────────────────────────────────────────────────
-  if (user.salary) {
-    const low = user.salary * 0.70, high = user.salary * 1.50;
-    const { salaryMax: jMax, salaryMin: jMin } = job;
-    const fmt = v => `₹${(v / 100000).toFixed(1)}L`;
-    if (jMax && jMin) {
-      if (jMax >= low && jMin <= high) { breakdown.salary = { score: 5, max: 5, detail: `Job ${fmt(jMin)}–${fmt(jMax)} fits expectation` }; score += 5; }
-      else { breakdown.salary = { score: 0, max: 5, detail: `Job ${fmt(jMin)}–${fmt(jMax)} outside user expectation ${fmt(user.salary)}` }; }
-    } else if (jMax) {
-      if (jMax >= low) { breakdown.salary = { score: 5, max: 5, detail: `Job max ${fmt(jMax)} meets expectation` }; score += 5; }
-      else { breakdown.salary = { score: 0, max: 5, detail: `Job max ${fmt(jMax)} below expectation` }; }
-    } else if (jMin) {
-      if (jMin <= high) { breakdown.salary = { score: 5, max: 5, detail: `Job min ${fmt(jMin)} within range` }; score += 5; }
-      else { breakdown.salary = { score: 0, max: 5, detail: `Job min ${fmt(jMin)} above expectation` }; }
-    } else { breakdown.salary = { score: 3, max: 5, detail: 'No salary listed — neutral' }; score += 3; }
-  } else {
-    breakdown.salary = { score: 3, max: 5, detail: 'User has no salary expectation — neutral' }; score += 3;
-  }
-
-  // ── Experience ───────────────────────────────────────────────────────────────
-  const { primary, adjacent } = getUserLevel(user.experience ?? 0);
-  const allHints = Object.values(EXP_HINTS).flat();
-  const hasAnyHint = allHints.some(h => text.includes(h));
-  if (EXP_HINTS[primary].some(h => text.includes(h))) {
-    const hit = EXP_HINTS[primary].find(h => text.includes(h));
-    breakdown.experience = { score: 15, max: 15, detail: `Level match — "${hit}" in job (user is ${primary})` };
-    score += 15;
-  } else if (adjacent && EXP_HINTS[adjacent].some(h => text.includes(h))) {
-    const hit = EXP_HINTS[adjacent].find(h => text.includes(h));
-    breakdown.experience = { score: 8, max: 15, detail: `Adjacent level — "${hit}" in job (user is ${primary})` };
-    score += 8;
-  } else if (!hasAnyHint) {
-    breakdown.experience = { score: 7, max: 15, detail: 'No experience level mentioned — neutral' };
-    score += 7;
-  } else {
-    breakdown.experience = { score: 0, max: 15, detail: `Wrong level — job mentions different experience tier (user is ${primary})` };
-  }
-
-  // ── Junior cap ───────────────────────────────────────────────────────────────
-  if (primary === 'junior' && SENIOR_TITLE_PATTERNS.some(p => titleLower.includes(p))) {
-    score = Math.min(score, 30);
-    breakdown.cap = 'Capped at 30 — junior user, senior title';
-  }
-
-  const total = Math.min(score, 100);
-  return { score: total, breakdown: { ...breakdown, total } };
+  const r = computeMatchScore(user, job);
+  return {
+    score: r.score,
+    breakdown: { ...r.parts, total: r.score, eligible: r.eligible, ineligibleReason: r.ineligibleReason, ...(r.cap ? { cap: r.cap } : {}) },
+  };
 };
 
 module.exports = {

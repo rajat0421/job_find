@@ -1,4 +1,5 @@
 const UserJob = require('../models/UserJob');
+const { MATCHER_VERSION } = require('../services/jobMatcher.service');
 
 const getMatchedJobs = async (req, res) => {
   try {
@@ -21,10 +22,19 @@ const getMatchedJobs = async (req, res) => {
     const INACTIVE = ['closed', 'expired'];
     const jobs = userJobs
       .filter((uj) => uj.jobId) // skip UserJobs whose Job was deleted
-      // Inactive postings are excluded from normal recommendations, but stay
-      // visible in a user's own saved/applied history (with status passed
-      // through below via the spread, so the UI can show it's no longer open).
-      .filter((uj) => uj.saved || uj.applied || !INACTIVE.includes(uj.jobId.status))
+      // Inactive postings AND stale-matcher-version scores are excluded from
+      // normal recommendations, but stay visible in a user's own saved/applied
+      // history — exactly the same precedent as the status check already
+      // applies. A record not yet reprocessed under the CURRENT MATCHER_VERSION
+      // reflects a previous scoring algorithm's judgment and must never be
+      // presented as a current, verified match (the false-positive incident
+      // this guards: a stale score of 88 under the old algorithm must not
+      // appear as "your match" before the bounded version sweep corrects it —
+      // see jobMatcher.service.js). Never filtered out of the DB query itself
+      // (`filter` above) — that would ALSO hide a user's own saved/applied
+      // history while it's awaiting re-scoring, not just unconfirmed new
+      // recommendations.
+      .filter((uj) => uj.saved || uj.applied || (!INACTIVE.includes(uj.jobId.status) && uj.matcherVersion === MATCHER_VERSION))
       .map((uj) => ({
         ...uj.jobId.toObject(),
         score: uj.score,
@@ -34,6 +44,13 @@ const getMatchedJobs = async (req, res) => {
         saved: uj.saved,
         applied: uj.applied,
         userJobId: uj._id,
+        // True whenever this record hasn't been reprocessed under the current
+        // scoring version yet (only possible here for a saved/applied job —
+        // see the filter above). The score/reasons above are then the
+        // PREVIOUS algorithm's result, not a current verified match — callers
+        // should treat them as provisional (e.g. "refreshing your match...")
+        // rather than display them as-is.
+        matchStale: uj.matcherVersion !== MATCHER_VERSION,
       }));
 
     res.json({ jobs, total, page, pages: Math.ceil(total / limit) });

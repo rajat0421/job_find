@@ -12,7 +12,15 @@ const jobSchema = new mongoose.Schema({
   workplaceType: { type: String }, // 'onsite' | 'remote' | 'hybrid' | null (Lever provides this)
   country: { type: String },       // e.g. 'IN' (Lever provides this)
   hash: { type: String, unique: true }, // cross-source dedup fingerprint — md5(title-company-location). Preserved as-is.
+  // `postedAt` means "when this posting first went live" — map it from a
+  // provider's own first-publication timestamp (e.g. Greenhouse's
+  // `first_published`), never from a last-edited timestamp. `sourceUpdatedAt`
+  // is the separate, distinct concept of "when the provider says this
+  // posting's content was last modified" (e.g. Greenhouse's `updated_at`) —
+  // optional, since not every provider exposes it. Conflating the two was a
+  // real bug: it made every posting look freshly-posted on every edit.
   postedAt: { type: Date },
+  sourceUpdatedAt: { type: Date, default: null },
 
   // Stable upstream identity (when the source provides one) + lifecycle tracking.
   // See services/jobLifecycle.service.js for how these are populated and used.

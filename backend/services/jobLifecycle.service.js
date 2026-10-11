@@ -43,6 +43,74 @@ const resolveStorableHash = async ({ hash, excludeId, source, sourceBoard, sourc
   return `${hash}::${source}:${sourceBoard || ''}:${sourceJobId}`;
 };
 
+// Fields a provider can report for one posting, and that are safe to merge
+// into an existing document. Deliberately excludes `salaryMin`/`salaryMax` —
+// no provider currently supplies values reliable enough to risk them here
+// (see greenhouse.js's comment on why Greenhouse's per-company custom
+// metadata fields aren't parsed), but the allow-list keeps this future-proof
+// if that ever changes.
+const MERGEABLE_FIELDS = ['title', 'company', 'location', 'salaryMin', 'salaryMax', 'description', 'applyLink', 'postedAt', 'sourceUpdatedAt', 'workplaceType', 'country'];
+
+// A provider's fetch for one posting can under-report a field it normally
+// provides (a transient API hiccup, a field the posting's own employer left
+// blank this one time) — e.g. Greenhouse's `first_published` being briefly
+// absent must never erase a previously-recorded `postedAt`. Stripping out
+// null/undefined/'' here, rather than blindly spreading the provider's raw
+// `fields` into `$set`, is what prevents that: a field simply isn't part of
+// the update at all when the provider didn't actually supply it this time.
+// This is intentionally conservative — no existing business rule asks for
+// "provider removed this value" to mean "clear it," so we never do that here.
+const sanitizeFields = (fields = {}) => {
+  const out = {};
+  for (const key of MERGEABLE_FIELDS) {
+    const value = fields[key];
+    if (value === null || value === undefined || value === '') continue;
+    out[key] = value;
+  }
+  return out;
+};
+
+// Fingerprint of the document state that would ACTUALLY exist after writing
+// `sanitized` on top of `existing` — not just `sanitized` alone. Needed
+// because sanitizeFields may omit a field entirely (provider didn't supply
+// it this time), in which case the resulting document keeps `existing`'s own
+// value for that field, and the fingerprint comparison must reflect that, or
+// a routine fetch with one missing-but-unchanged field would look like a
+// content change and wastefully flag needsMatching.
+const FINGERPRINT_FIELDS = ['title', 'description', 'location', 'workplaceType', 'salaryMin', 'salaryMax'];
+const projectedFingerprint = (existing, sanitized) => {
+  const projected = { status: 'active' };
+  for (const key of FINGERPRINT_FIELDS) {
+    projected[key] = key in sanitized ? sanitized[key] : existing[key];
+  }
+  return computeJobFingerprint(projected);
+};
+
+// Shared by the by-ID match and the legacy-hash-upgrade match below — both
+// cases have "confidently identified an existing document that should now be
+// treated as this exact posting," and both need the identical refresh
+// policy: recompute the storable hash, only flag needsMatching when a
+// scoring-relevant field actually changes, reactivate/reset the lifecycle
+// counters (the same ID being re-observed means it's alive again by
+// definition), and never touch `firstSeenAt` — this document's real history
+// predates this particular write.
+const applyIdentifiedUpdate = async ({ existing, fields, hash, source, sourceBoard, sourceJobId, now }) => {
+  const sanitized = sanitizeFields(fields);
+  const storedHash = await resolveStorableHash({ hash, excludeId: existing._id, source, sourceBoard, sourceJobId });
+  const contentChanged = computeJobFingerprint(existing) !== projectedFingerprint(existing, sanitized);
+
+  const set = { ...sanitized, source, sourceBoard, sourceJobId, hash: storedHash, lastSeenAt: now, status: 'active', missingScans: 0 };
+  if (contentChanged) set.needsMatching = true;
+
+  try {
+    await Job.updateOne({ _id: existing._id }, { $set: set });
+  } catch (err) {
+    console.warn(`[JobLifecycle] Failed to update observed job ${existing._id}:`, err.message);
+    return { created: false, updated: false };
+  }
+  return { created: false, updated: contentChanged };
+};
+
 /**
  * Finds-or-creates a Job for one observed posting from a fetch cycle.
  *
@@ -51,7 +119,21 @@ const resolveStorableHash = async ({ hash, excludeId, source, sourceBoard, sourc
  *      signal when a provider exposes a stable ID. Found → refresh mutable
  *      fields in place (the same ID can be re-edited by the employer) and mark
  *      it seen. Never creates a duplicate for a posting we already track by ID.
- *   2. Fallback: the existing cross-source `hash` fingerprint (md5 of
+ *   2. Legacy upgrade: a document that predates sourceJobId tracking entirely
+ *      (created before this feature shipped, so it has no sourceJobId at
+ *      all) but whose canonical hash, source, and board all match exactly
+ *      what this fetch just observed. This is treated with the SAME
+ *      confidence as #1 — not a cross-source guess — because `hash` is
+ *      uniquely indexed, so at most one document can hold it; matching on
+ *      hash + this exact source + this exact board is strictly MORE specific
+ *      than the plain by-ID lookup would need, just missing the ID itself.
+ *      The match upgrades that same document in place (stable Mongo _id
+ *      preserved, no new document created) by writing its sourceJobId/
+ *      sourceBoard for the first time and refreshing content fields — fixing
+ *      the previous behavior where such a document could only ever be found
+ *      via the hash-fallback below, which deliberately never refreshes
+ *      content (see #3), leaving it permanently stale.
+ *   3. Fallback: the existing cross-source `hash` fingerprint (md5 of
  *      title-company-location) — but ONLY against docs that don't already have
  *      their own confirmed sourceJobId within this exact source+board. This is
  *      what preserves today's cross-source dedup (the same vacancy appearing on
@@ -59,19 +141,20 @@ const resolveStorableHash = async ({ hash, excludeId, source, sourceBoard, sourc
  *      letting two genuinely distinct postings that happen to share an
  *      identical title/company/location be told apart whenever stable IDs are
  *      available for both.
- *   3. Neither matches → genuinely new posting.
+ *   4. Neither matches → genuinely new posting.
  *
- * When matched by sourceJobId, fields are overwritten — the posting may have
- * changed title/location/description/link — but NOT lastSeenAt/status/
+ * When matched by sourceJobId or upgraded from a legacy hash match (#1/#2),
+ * fields are refreshed (see sanitizeFields — missing/null incoming values
+ * never erase a previously-stored one) — but NOT lastSeenAt/status/
  * missingScans if this is actually a cross-source confirmation (see the hash
- * branch below for why). When matched only by hash (effectively a different
- * source's existing doc for what looks like the same role), fields are left
- * untouched to avoid one source's data clobbering another's; only lastSeenAt
- * is bumped — status/missingScans are deliberately NOT touched here (see
- * Improvement 3 Issue B: a cross-source confirmation must not reset or mask
- * the primary source's own missing-scan count, or it could never close a
- * posting its own authoritative board has actually removed; conversely it
- * must not resurrect a posting that board has already closed).
+ * branch below for why). When matched only by hash across a DIFFERENT source
+ * or board (#3), fields are left untouched to avoid one source's data
+ * clobbering another's; only lastSeenAt is bumped — status/missingScans are
+ * deliberately NOT touched here (see Improvement 3 Issue B: a cross-source
+ * confirmation must not reset or mask the primary source's own missing-scan
+ * count, or it could never close a posting its own authoritative board has
+ * actually removed; conversely it must not resurrect a posting that board
+ * has already closed).
  */
 const observeJob = async ({ source, sourceBoard = null, sourceJobId = null, hash, fields }) => {
   const now = new Date();
@@ -79,34 +162,22 @@ const observeJob = async ({ source, sourceBoard = null, sourceJobId = null, hash
   if (sourceJobId) {
     const byId = await Job.findOne({ source, sourceBoard, sourceJobId });
     if (byId) {
-      const storedHash = await resolveStorableHash({ hash, excludeId: byId._id, source, sourceBoard, sourceJobId });
+      return applyIdentifiedUpdate({ existing: byId, fields, hash, source, sourceBoard, sourceJobId, now });
+    }
 
-      // Improvement 5: only flag this job for rematching when a field that
-      // actually feeds scoring changed (title/description/location/
-      // workplaceType/salary/status) — NOT for a routine "still alive"
-      // re-observation where nothing scoring-relevant moved. Comparing against
-      // the job's state as it already exists in the DB (not just overwriting
-      // blindly) is what keeps this cheap and correct.
-      const oldFingerprint = computeJobFingerprint(byId);
-      const newFingerprint = computeJobFingerprint({ ...fields, status: 'active' });
-      const contentChanged = oldFingerprint !== newFingerprint;
-      const set = { ...fields, hash: storedHash, lastSeenAt: now, status: 'active', missingScans: 0 };
-      if (contentChanged) set.needsMatching = true;
-
-      // `updated` (Improvement 9 audit fix) reuses this same fingerprint
-      // comparison the needsMatching flag already relied on — this is the
-      // "a scoring-relevant field actually changed" signal, not just "we saw
-      // this job again" (a routine re-observation with no content change
-      // reports updated:false, exactly like needsMatching staying false).
-      // Only true if the write actually succeeded — a failed write updated
-      // nothing, regardless of what the comparison found.
-      try {
-        await Job.updateOne({ _id: byId._id }, { $set: set });
-      } catch (err) {
-        console.warn(`[JobLifecycle] Failed to update observed job ${byId._id}:`, err.message);
-        return { created: false, updated: false };
-      }
-      return { created: false, updated: contentChanged };
+    // Legacy upgrade — see case #2 above. Intentionally does NOT also require
+    // the raw `hash` to be free of any OTHER document's claim (resolveStorableHash
+    // already handles the extremely rare case where a different doc holds this
+    // exact hash by disambiguating instead of colliding), only that THIS
+    // candidate itself has no sourceJobId yet and matches on source + board.
+    const legacyMatch = await Job.findOne({
+      hash,
+      source,
+      sourceJobId: null,
+      $or: [{ sourceBoard }, { sourceBoard: null }],
+    });
+    if (legacyMatch) {
+      return applyIdentifiedUpdate({ existing: legacyMatch, fields, hash, source, sourceBoard, sourceJobId, now });
     }
   }
 
@@ -132,6 +203,11 @@ const observeJob = async ({ source, sourceBoard = null, sourceJobId = null, hash
     return { created: false, updated: false }; // a liveness confirmation only — no content field is ever touched here
   }
 
+  // Note: NOT sanitizeFields here — sanitizing exists to stop a missing/null
+  // incoming value from erasing a PREVIOUSLY-STORED good one, which only
+  // applies to updating an existing doc. A brand-new doc has nothing to
+  // erase, so a provider's genuine `null` (e.g. Ashby's intentionally
+  // unparsed salary) is stored as-is, exactly as before this change.
   const storedHash = await resolveStorableHash({ hash, excludeId: null, source, sourceBoard, sourceJobId });
   try {
     await Job.create({

@@ -178,3 +178,168 @@ describe('Issue B — cross-source interference with board-level missing detecti
     expect(b.status).toBe('active');
   });
 });
+
+// Real-database regression tests for the legacy-identity-upgrade fix: every
+// existing Greenhouse job created before sourceJobId/sourceBoard tracking
+// shipped (confirmed directly against production: 0 of 26,634 stored
+// Greenhouse jobs had a sourceJobId) was permanently stuck being "confirmed
+// alive" via the hash-fallback path on every subsequent fetch — which never
+// writes sourceJobId, and never refreshes title/description/location/
+// applyLink/postedAt. A legacy job's content was effectively frozen forever
+// at whatever it was on the day it was first created, while still silently
+// marked "seen" every cycle via lastSeenAt.
+describe('Legacy identity upgrade — a pre-existing hash-only document gains a stable ID (real MongoDB)', () => {
+  test('a legacy document (no sourceJobId at all) is upgraded in place on its next observation, not duplicated', async () => {
+    // Simulate a job created by code that predates sourceJobId tracking —
+    // genuinely has no sourceJobId/sourceBoard field at all, not just null,
+    // matching what was verified directly against real stored documents.
+    const legacy = await Job.create({
+      title: 'Software Architect, Java Backend', company: 'Okta', location: 'Bengaluru, India',
+      hash: 'legacy-hash-1', source: 'greenhouse', status: 'active',
+      firstSeenAt: new Date('2026-06-30'), lastSeenAt: new Date('2026-06-30'),
+    });
+    expect(legacy.sourceJobId).toBeNull(); // schema default on a hydrated doc; genuinely absent on real pre-existing production documents — both read as "no stable ID yet" to observeJob's queries
+
+    const result = await observeJob({
+      source: 'greenhouse', sourceBoard: 'okta', sourceJobId: '7882676', hash: 'legacy-hash-1',
+      fields: { title: 'Software Architect, Java Backend', company: 'Okta', location: 'Bengaluru, India' },
+    });
+
+    const all = await Job.find({}).lean();
+    expect(all).toHaveLength(1); // upgraded in place — never a second document
+    expect(all[0]._id.toString()).toBe(legacy._id.toString()); // same stable Mongo _id
+    expect(all[0].sourceJobId).toBe('7882676');
+    expect(all[0].sourceBoard).toBe('okta');
+    expect(all[0].firstSeenAt.toISOString()).toBe(new Date('2026-06-30').toISOString()); // true history preserved
+    expect(result.created).toBe(false);
+  });
+
+  test('once upgraded, the SAME document is found directly by ID on the next fetch — no further hash dependency', async () => {
+    await Job.create({
+      title: 'Old Title', company: 'Okta', location: 'Bengaluru, India',
+      hash: 'legacy-hash-2', source: 'greenhouse', status: 'active',
+    });
+    const first = await observeJob({
+      source: 'greenhouse', sourceBoard: 'okta', sourceJobId: '999', hash: 'legacy-hash-2',
+      fields: { title: 'Old Title', company: 'Okta', location: 'Bengaluru, India' },
+    });
+    expect(first.created).toBe(false);
+
+    // Title changes AND the hash the fetcher would now compute changes too
+    // (hash is derived from title+company+location) — the by-ID path must
+    // still find the SAME document directly, with no legacy/hash lookup at all.
+    const second = await observeJob({
+      source: 'greenhouse', sourceBoard: 'okta', sourceJobId: '999', hash: 'a-totally-different-hash',
+      fields: { title: 'New Title', company: 'Okta', location: 'Bengaluru, India' },
+    });
+
+    const all = await Job.find({}).lean();
+    expect(all).toHaveLength(1);
+    expect(all[0].title).toBe('New Title');
+    expect(all[0].sourceJobId).toBe('999');
+    expect(second.created).toBe(false);
+    expect(second.updated).toBe(true); // title is scoring-relevant — correctly flagged
+  });
+
+  test('content is actually refreshed on the upgrading observation — not just lastSeenAt', async () => {
+    await Job.create({
+      title: 'Stale Title', description: 'Stale description', location: 'Old City',
+      company: 'Okta', hash: 'legacy-hash-3', source: 'greenhouse', status: 'active',
+    });
+
+    await observeJob({
+      source: 'greenhouse', sourceBoard: 'okta', sourceJobId: '111', hash: 'legacy-hash-3',
+      fields: { title: 'Fresh Title', company: 'Okta', location: 'New City', description: 'Fresh description', applyLink: 'https://okta.example/111' },
+    });
+
+    const doc = await Job.findOne({ sourceJobId: '111' }).lean();
+    expect(doc.title).toBe('Fresh Title');
+    expect(doc.description).toBe('Fresh description');
+    expect(doc.location).toBe('New City');
+    expect(doc.applyLink).toBe('https://okta.example/111');
+  });
+
+  test('a cross-source document (different source) is never upgraded by a same-hash Greenhouse observation — the existing cross-source dedup still wins', async () => {
+    // An Adzuna-originated doc for what looks like the same role, no sourceJobId.
+    const adzuna = await Job.create({
+      title: 'Software Architect', company: 'Okta', location: 'Bengaluru, India',
+      hash: 'cross-source-hash', source: 'adzuna', status: 'active',
+    });
+
+    await observeJob({
+      source: 'greenhouse', sourceBoard: 'okta', sourceJobId: '222', hash: 'cross-source-hash',
+      fields: { title: 'Software Architect', company: 'Okta', location: 'Bengaluru, India' },
+    });
+
+    // The legacy-upgrade path only ever applies WITHIN the same source — a
+    // different source matching by hash is the pre-existing, unchanged,
+    // intentional cross-source dedup (see the "cross-source dedup still
+    // resolves to the one canonical representative doc" test above): it
+    // must NOT be granted Greenhouse's identity, and no second document is
+    // created for what looks like the same role under a different source.
+    const all = await Job.find({}).lean();
+    expect(all).toHaveLength(1);
+    expect(all[0]._id.toString()).toBe(adzuna._id.toString());
+    expect(all[0].source).toBe('adzuna');
+    expect(all[0].sourceJobId).toBeNull(); // never granted Greenhouse's ID
+  });
+
+  test('a missing/null incoming field never erases a previously-stored value during a legacy upgrade', async () => {
+    await Job.create({
+      title: 'Engineer', company: 'Okta', location: 'Remote', applyLink: 'https://okta.example/already-set',
+      postedAt: new Date('2026-01-01'), hash: 'legacy-hash-4', source: 'greenhouse', status: 'active',
+    });
+
+    // This observation's fields omit applyLink/postedAt entirely (as if the
+    // provider didn't supply them this time) — they must survive untouched.
+    await observeJob({
+      source: 'greenhouse', sourceBoard: 'okta', sourceJobId: '333', hash: 'legacy-hash-4',
+      fields: { title: 'Engineer', company: 'Okta', location: 'Remote', applyLink: null, postedAt: null },
+    });
+
+    const doc = await Job.findOne({ sourceJobId: '333' }).lean();
+    expect(doc.applyLink).toBe('https://okta.example/already-set');
+    expect(doc.postedAt.toISOString()).toBe(new Date('2026-01-01').toISOString());
+  });
+
+  test('repeated fetches of the same posting after the upgrade are idempotent — one document throughout', async () => {
+    await Job.create({
+      title: 'Engineer', company: 'Okta', location: 'Remote',
+      hash: 'legacy-hash-5', source: 'greenhouse', status: 'active',
+    });
+
+    for (let i = 0; i < 5; i++) {
+      await observeJob({
+        source: 'greenhouse', sourceBoard: 'okta', sourceJobId: '444', hash: 'legacy-hash-5',
+        fields: { title: 'Engineer', company: 'Okta', location: 'Remote' },
+      });
+    }
+
+    const all = await Job.find({ sourceJobId: '444' }).lean();
+    expect(all).toHaveLength(1);
+  });
+
+  test('a content change on the SAME upgrade observation correctly flags needsMatching; a no-op re-observation does not', async () => {
+    const legacy = await Job.create({
+      title: 'Engineer', company: 'Okta', location: 'Remote', description: 'Old description',
+      hash: 'legacy-hash-6', source: 'greenhouse', status: 'active', needsMatching: false,
+    });
+    expect(legacy.needsMatching).toBe(false);
+
+    const upgradeWithChange = await observeJob({
+      source: 'greenhouse', sourceBoard: 'okta', sourceJobId: '555', hash: 'legacy-hash-6',
+      fields: { title: 'Engineer', company: 'Okta', location: 'Remote', description: 'New description' },
+    });
+    expect(upgradeWithChange.updated).toBe(true);
+    expect((await Job.findOne({ sourceJobId: '555' }).lean()).needsMatching).toBe(true);
+
+    // Reset to simulate the matcher having processed it, then re-observe with NO change.
+    await Job.updateOne({ sourceJobId: '555' }, { $set: { needsMatching: false } });
+    const noopObservation = await observeJob({
+      source: 'greenhouse', sourceBoard: 'okta', sourceJobId: '555', hash: 'legacy-hash-6',
+      fields: { title: 'Engineer', company: 'Okta', location: 'Remote', description: 'New description' },
+    });
+    expect(noopObservation.updated).toBe(false);
+    expect((await Job.findOne({ sourceJobId: '555' }).lean()).needsMatching).toBe(false);
+  });
+});

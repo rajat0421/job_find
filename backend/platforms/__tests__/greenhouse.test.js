@@ -14,13 +14,15 @@ const { getCompanies } = require('../../services/companies.service');
 const { fetchJobs } = require('../greenhouse');
 const { MISSING_SCAN_THRESHOLD } = require('../../services/jobLifecycle.service');
 
-const ghJob = (id, title, location) => ({
+const ghJob = (id, title, location, overrides = {}) => ({
   id,
   title,
   location: { name: location },
   absolute_url: `https://boards.greenhouse.io/acme/jobs/${id}`,
   updated_at: '2026-01-01T00:00:00Z',
+  first_published: '2025-12-01T00:00:00Z',
   content: '<p>desc</p>',
+  ...overrides,
 });
 
 beforeEach(() => {
@@ -123,6 +125,85 @@ test('a re-scan with no content change at all reports neither added nor updated 
 
   expect(second.added).toBe(0);
   expect(second.updated).toBe(0);
+});
+
+describe('date field mapping — first_published vs updated_at', () => {
+  test('postedAt comes from first_published, never from updated_at', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: { jobs: [ghJob('1', 'Engineer', 'Remote', { first_published: '2025-01-15T00:00:00Z', updated_at: '2026-09-21T12:43:00Z' })] },
+    });
+    await fetchJobs();
+
+    const job = Job.__store[0];
+    expect(job.postedAt.toISOString()).toBe(new Date('2025-01-15T00:00:00Z').toISOString());
+    expect(job.postedAt.toISOString()).not.toBe(new Date('2026-09-21T12:43:00Z').toISOString());
+  });
+
+  test("updated_at is captured separately in sourceUpdatedAt, distinct from postedAt", async () => {
+    axios.get.mockResolvedValueOnce({
+      data: { jobs: [ghJob('1', 'Engineer', 'Remote', { first_published: '2025-01-15T00:00:00Z', updated_at: '2026-09-21T12:43:00Z' })] },
+    });
+    await fetchJobs();
+
+    const job = Job.__store[0];
+    expect(job.sourceUpdatedAt.toISOString()).toBe(new Date('2026-09-21T12:43:00Z').toISOString());
+  });
+
+  test('a missing first_published leaves postedAt unset rather than falling back to updated_at', async () => {
+    axios.get.mockResolvedValueOnce({
+      data: { jobs: [ghJob('1', 'Engineer', 'Remote', { first_published: null, updated_at: '2026-09-21T12:43:00Z' })] },
+    });
+    await fetchJobs();
+
+    expect(Job.__store[0].postedAt).toBeFalsy(); // never substituted with updated_at
+  });
+});
+
+describe('legacy identity upgrade, exercised through the full fetchJobs pipeline', () => {
+  test('a pre-existing job with no sourceJobId is upgraded in place — same document, new stable ID, refreshed content', async () => {
+    // Seed a legacy document the way a pre-Improvement-3 fetch would have
+    // left it: no sourceJobId/sourceBoard at all, stale content.
+    const legacyHash = require('crypto').createHash('md5').update('Engineer-Acme-Remote').digest('hex');
+    Job.__store.push({
+      _id: 'legacy1', hash: legacyHash, source: 'greenhouse', sourceBoard: null, sourceJobId: null,
+      title: 'Engineer', company: 'Acme', location: 'Remote', description: 'Old stale description',
+      status: 'active', missingScans: 0, firstSeenAt: new Date('2026-01-01'), lastSeenAt: new Date('2026-01-01'),
+    });
+
+    axios.get.mockResolvedValueOnce({
+      data: { jobs: [ghJob('42', 'Engineer', 'Remote', { content: '<p>Fresh description</p>' })] },
+    });
+    const result = await fetchJobs();
+
+    expect(Job.__store).toHaveLength(1); // upgraded in place, not duplicated
+    const upgraded = Job.__store[0];
+    expect(upgraded._id).toBe('legacy1'); // same stable internal id
+    expect(upgraded.sourceJobId).toBe('42');
+    expect(upgraded.sourceBoard).toBe('acme');
+    expect(upgraded.description).toBe('Fresh description'); // content actually refreshed, not just lastSeenAt
+    expect(upgraded.firstSeenAt.getTime()).toBe(new Date('2026-01-01').getTime()); // true history preserved
+    expect(result.added).toBe(0);
+    expect(result.updated).toBe(1); // description changed — correctly counted as an update, not a silent no-op
+  });
+
+  test('once upgraded, the next fetch is found directly by ID — still exactly one document', async () => {
+    const legacyHash = require('crypto').createHash('md5').update('Engineer-Acme-Remote').digest('hex');
+    Job.__store.push({
+      _id: 'legacy2', hash: legacyHash, source: 'greenhouse', sourceBoard: null, sourceJobId: null,
+      title: 'Engineer', company: 'Acme', location: 'Remote',
+      status: 'active', missingScans: 0,
+    });
+
+    axios.get.mockResolvedValueOnce({ data: { jobs: [ghJob('42', 'Engineer', 'Remote')] } });
+    await fetchJobs();
+
+    axios.get.mockResolvedValueOnce({ data: { jobs: [ghJob('42', 'Senior Engineer', 'Remote')] } });
+    await fetchJobs();
+
+    expect(Job.__store).toHaveLength(1);
+    expect(Job.__store[0]._id).toBe('legacy2');
+    expect(Job.__store[0].title).toBe('Senior Engineer');
+  });
 });
 
 describe('Improvement 4 (final) — per-provider and cycle time budgets', () => {

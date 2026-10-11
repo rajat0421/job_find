@@ -1,4 +1,5 @@
 const bcrypt = require('bcryptjs');
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const UserJob = require('../models/UserJob');
 const ResumeProfile = require('../models/ResumeProfile');
@@ -147,13 +148,35 @@ const changePassword = async (req, res) => {
 // step does not touch authentication: a request must still carry a valid
 // token, and it can only ever act on the account that token belongs to.
 //
-// Ordering is deliberate: every auxiliary collection is deleted BEFORE the
-// User document itself. If any step throws, the whole request fails with
-// nothing further attempted — the account and any not-yet-deleted data stay
-// fully intact, and the exact same request can be safely retried later
-// (deleteMany against already-removed records is a no-op). The one thing
-// that must never happen is deleting the User document while an earlier
-// step failed, which would orphan data with no way to clean it up afterward.
+// No external, non-transactional storage is involved: resumes are parsed
+// in-memory at upload time (multer memoryStorage — see resume.routes.js)
+// and only the extracted JSON is persisted, in ResumeProfile. Every record
+// this endpoint touches lives in this same MongoDB database, so a real
+// multi-document transaction (not just careful ordering) can make the whole
+// cascade atomic where the deployment supports one.
+//
+// Two paths, in order of preference:
+//
+//  1. Transactional (used whenever this MongoDB deployment is a replica set
+//     or mongos — e.g. any MongoDB Atlas cluster, including the free tier,
+//     which always runs as a replica set). All six deletes run inside a
+//     single session.withTransaction(): if ANY of them fails, the driver
+//     aborts the transaction and the server guarantees none of them were
+//     applied — "nothing was deleted" is then a true statement even though
+//     the failure happened partway through the cascade.
+//
+//  2. Sequential fallback (only reached if the transaction attempt fails
+//     with the specific "this deployment doesn't support transactions"
+//     error — e.g. a standalone, non-replica-set MongoDB). This is the
+//     previous behavior: auxiliary collections deleted before the User
+//     document, in order, with NO rollback — so a failure here can leave a
+//     real partial deletion behind. Each step is counted; a failure after
+//     at least one step has already committed is reported as a partial
+//     failure, never misreported as "nothing was deleted". Every step is
+//     still scoped only to this user's own ids/email, and every step is a
+//     no-op when re-run against already-deleted records, so retrying the
+//     exact same request is always safe, finishes the job, and can never
+//     touch another user's data.
 //
 // Explicit data-retention decisions made here (documented since this app has
 // no separate written retention policy to defer to):
@@ -171,6 +194,34 @@ const changePassword = async (req, res) => {
 //    not a correctness or security issue, and cleaning it would mean
 //    rewriting potentially many other users' documents for a cosmetic gain.
 //  - Job/Company/Config: never touched — not user-owned data.
+
+// The MongoDB server's exact, stable error text for "a transaction was
+// attempted against a deployment that isn't a replica set or mongos" (code
+// 20 / IllegalOperation). Matching on this lets the fallback trigger only
+// for "transactions aren't supported here" — any other error thrown inside
+// the transaction is treated as a genuine failure that the driver has
+// already safely rolled back.
+const isTransactionsUnsupported = (err) =>
+  /Transaction numbers are only allowed on a replica set member or mongos/i.test(err?.message || '');
+
+// The full cascade, as an ordered list of thunks, so the transactional path
+// and the sequential fallback share one definition of "what deleting an
+// account means" instead of maintaining two copies that could drift apart.
+// `session` is attached via the query builder's `.session()` — omitted
+// (falsy) it's a no-op, so the fallback path issues plain, unsessioned
+// queries identical to before.
+const buildCascadeSteps = (userId, email, session) => {
+  const withSession = (query) => (session ? query.session(session) : query);
+  return [
+    () => withSession(UserJob.deleteMany({ userId })),
+    () => withSession(ResumeProfile.deleteMany({ userId })),
+    () => withSession(Feedback.deleteMany({ userId })),
+    () => withSession(EmailLog.deleteMany({ userId })),
+    () => withSession(OtpVerification.deleteMany({ email })),
+    () => withSession(User.deleteOne({ _id: userId })),
+  ];
+};
+
 const deleteAccount = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
@@ -182,15 +233,56 @@ const deleteAccount = async (req, res) => {
     }
 
     const userId = user._id;
-    await UserJob.deleteMany({ userId });
-    await ResumeProfile.deleteMany({ userId });
-    await Feedback.deleteMany({ userId });
-    await EmailLog.deleteMany({ userId });
-    await OtpVerification.deleteMany({ email: user.email });
+    const email = user.email;
 
-    await User.deleteOne({ _id: userId });
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        for (const step of buildCascadeSteps(userId, email, session)) {
+          await step();
+        }
+      });
+      return res.json({ message: 'Account deleted' });
+    } catch (txnErr) {
+      if (!isTransactionsUnsupported(txnErr)) {
+        // A genuine failure mid-transaction. withTransaction has already
+        // aborted it server-side, so — unlike the sequential fallback below
+        // — nothing was actually written. "Nothing was deleted" is accurate
+        // here specifically because this path is atomic.
+        console.error('[Account] Transactional deletion failed for user', req.user.id, ':', txnErr.message);
+        return res.status(500).json({ message: 'Failed to delete your account — please try again. Nothing was deleted.' });
+      }
+      // Unsupported deployment — fall through to the sequential path. No
+      // write from the aborted transaction attempt was ever committed.
+    } finally {
+      await session.endSession();
+    }
 
-    res.json({ message: 'Account deleted' });
+    let stepsCompleted = 0;
+    try {
+      for (const step of buildCascadeSteps(userId, email, null)) {
+        await step();
+        stepsCompleted++;
+      }
+      res.json({ message: 'Account deleted' });
+    } catch (err) {
+      const total = 6;
+      console.error(
+        '[Account] Sequential deletion failed for user', req.user.id,
+        `after ${stepsCompleted}/${total} steps:`, err.message
+      );
+      if (stepsCompleted === 0) {
+        res.status(500).json({ message: 'Failed to delete your account — please try again. Nothing was deleted.' });
+      } else {
+        // Some records are already gone — do not claim success, and do not
+        // claim nothing was deleted either. Every remaining step is scoped
+        // to this same user and safe to re-run, so a retry is the correct
+        // recovery action and won't duplicate or misdirect any deletion.
+        res.status(500).json({
+          message: 'Account deletion did not finish — some of your data was already removed. Please try again; it is safe to retry and will not affect any other account.',
+        });
+      }
+    }
   } catch (err) {
     console.error('[Account] Deletion failed for user', req.user.id, ':', err.message);
     res.status(500).json({ message: 'Failed to delete your account — please try again. Nothing was deleted.' });

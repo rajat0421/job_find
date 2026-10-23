@@ -79,4 +79,23 @@ describe('createDeadline — monotonic elapsed-time tracking', () => {
     delete process.env.FETCH_PROVIDER_BUDGET_MS;
     delete process.env.FETCH_CYCLE_BUDGET_MS;
   });
+
+  // Monitoring correction: httpClient.service.js needs to know WHICH deadline
+  // tripped (provider vs cycle) to distinguish a self-contained provider
+  // budget exhaustion from a shared cycle budget exhaustion that starves
+  // every other provider that cycle — see that file's budgetExceededError().
+  test('createProviderDeadline and createCycleDeadline tag their deadline with a distinguishing kind', () => {
+    jest.resetModules();
+    const { createProviderDeadline, createCycleDeadline } = require('../fetchBudget.service');
+
+    expect(createProviderDeadline().kind).toBe('provider');
+    expect(createCycleDeadline().kind).toBe('cycle');
+  });
+
+  test('createDeadline defaults to no kind when the caller omits one — backward compatible', () => {
+    jest.resetModules();
+    const { createDeadline } = require('../fetchBudget.service');
+
+    expect(createDeadline(1000).kind).toBeNull();
+  });
 });

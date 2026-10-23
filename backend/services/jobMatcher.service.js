@@ -839,4 +839,10 @@ module.exports = {
   computeUserFingerprint,
   computeJobFingerprint,
   MATCHER_VERSION,
+  // Exported so monitoring.service.js can compute an ideal (best-case, cron-
+  // runs-every-hour-with-no-new-backlog) drain-time estimate for the two
+  // backlogs these batch sizes bound — reusing the real constants rather
+  // than duplicating them as a second, driftable copy.
+  PENDING_BATCH_SIZE,
+  VERSION_SWEEP_BATCH_SIZE,
 };

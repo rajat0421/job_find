@@ -8,8 +8,8 @@ jest.mock('../../models/User', () => ({}));
 jest.mock('../../models/UserJob', () => ({}));
 jest.mock('../../models/EmailLog', () => ({}));
 jest.mock('../../models/Config', () => ({}));
-jest.mock('../../services/email.service', () => ({ sendJobDigestEmail: jest.fn(), sendAdminDigestCopy: jest.fn() }));
-jest.mock('../../services/config.service', () => ({ getEmailThreshold: jest.fn() }));
+jest.mock('../../services/email.service', () => ({ sendJobDigestEmail: jest.fn(), sendAdminDigestCopy: jest.fn(), isSafeHttpUrl: jest.requireActual('../../services/email.service').isSafeHttpUrl }));
+jest.mock('../../services/config.service', () => ({ getEmailThreshold: jest.fn(), getEmailFreshnessConfig: jest.fn().mockResolvedValue({ defaultMaxAgeDays: 30, adzunaMaxAgeDays: 14 }) }));
 
 const cron = require('node-cron');
 const { startDailyEmailCron, isDue } = require('../dailyEmail.job');

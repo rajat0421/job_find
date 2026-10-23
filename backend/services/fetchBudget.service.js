@@ -13,17 +13,23 @@ const CYCLE_BUDGET_MS = positiveIntFromEnv('FETCH_CYCLE_BUDGET_MS', 10 * 60 * 10
 // Only ever used to measure elapsed intervals, never as a wall-clock timestamp.
 const elapsedMs = (startNs) => Number(process.hrtime.bigint() - startNs) / 1e6;
 
-const createDeadline = (budgetMs) => {
+// `kind` ('provider' | 'cycle') is optional and purely informational — it
+// lets a caller holding several deadlines (see httpClient.service.js) report
+// WHICH one actually tripped on a budget_exceeded rejection, instead of only
+// knowing that at least one of them did. Never used in the expiry check
+// itself, so a caller that omits it keeps behaving exactly as before.
+const createDeadline = (budgetMs, kind = null) => {
   const startNs = process.hrtime.bigint();
   return {
     expired: () => elapsedMs(startNs) >= budgetMs,
     remainingMs: () => Math.max(0, budgetMs - elapsedMs(startNs)),
     elapsedMs: () => elapsedMs(startNs),
     budgetMs,
+    kind,
   };
 };
 
-const createCycleDeadline = () => createDeadline(CYCLE_BUDGET_MS);
-const createProviderDeadline = () => createDeadline(PROVIDER_BUDGET_MS);
+const createCycleDeadline = () => createDeadline(CYCLE_BUDGET_MS, 'cycle');
+const createProviderDeadline = () => createDeadline(PROVIDER_BUDGET_MS, 'provider');
 
 module.exports = { createCycleDeadline, createProviderDeadline, createDeadline, PROVIDER_BUDGET_MS, CYCLE_BUDGET_MS };

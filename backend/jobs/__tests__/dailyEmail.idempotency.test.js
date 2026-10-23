@@ -15,8 +15,8 @@ jest.mock('../../models/EmailLog', () => ({
   findOneAndUpdate: jest.fn(),
 }));
 jest.mock('../../models/Config', () => ({ findOne: jest.fn() }));
-jest.mock('../../services/email.service', () => ({ sendJobDigestEmail: jest.fn(), sendAdminDigestCopy: jest.fn() }));
-jest.mock('../../services/config.service', () => ({ getEmailThreshold: jest.fn() }));
+jest.mock('../../services/email.service', () => ({ sendJobDigestEmail: jest.fn(), sendAdminDigestCopy: jest.fn(), isSafeHttpUrl: jest.requireActual('../../services/email.service').isSafeHttpUrl }));
+jest.mock('../../services/config.service', () => ({ getEmailThreshold: jest.fn(), getEmailFreshnessConfig: jest.fn().mockResolvedValue({ defaultMaxAgeDays: 30, adzunaMaxAgeDays: 14 }) }));
 
 const User = require('../../models/User');
 const UserJob = require('../../models/UserJob');
@@ -42,7 +42,7 @@ const dupKeyError = () => Object.assign(new Error('E11000 duplicate key error'),
 
 const matchedUserJob = (overrides = {}) => ({
   _id: 'uj1',
-  jobId: { title: 'Role', status: 'active', needsMatching: false },
+  jobId: { title: 'Role', status: 'active', needsMatching: false, postedAt: new Date(), applyLink: 'https://example.com/apply' },
   score: 90,
   matcherVersion: MATCHER_VERSION,
   userFingerprint: DUE_USER_FINGERPRINT,

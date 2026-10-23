@@ -26,16 +26,37 @@ const statusColor = (status) => ({
   partial: 'bg-amber-500/10 text-amber-400 ring-amber-500/20',
   failed: 'bg-red-500/10 text-red-400 ring-red-500/20',
   unknown: 'bg-white/5 text-slate-400 ring-white/10',
+  // Distinct from 'success' on purpose — see monitoring.service.js's
+  // getEmailHealth: this means zero EmailLog events in the last 24h, which
+  // previously defaulted to the 'success' badge and looked identical to an
+  // actually-healthy, actively-sending pipeline.
+  no_activity: 'bg-white/5 text-slate-400 ring-white/10',
 }[status] || 'bg-white/5 text-slate-400 ring-white/10');
+
+// "24 consecutive failures" is a floor, not an exact count, whenever it
+// equals the full inspected window — see monitoring.service.js's
+// consecutiveFailuresCapped. lastSuccessAt:null is similarly ambiguous: it
+// either means "never, in all recorded history" (window not capped — there
+// simply isn't more history to miss) or "not within the visible window,
+// older history unexamined" (window capped).
+const describeProviderStreak = (p) => {
+  if (p.consecutiveFailuresCapped) return '24+ (all recent runs lacked a clean result)';
+  return `${p.consecutiveFailures} consecutive failure${p.consecutiveFailures === 1 ? '' : 's'}`;
+};
+const describeLastSuccess = (p) => {
+  if (p.lastSuccessAt) return toIST(p.lastSuccessAt);
+  return p.consecutiveFailuresCapped ? 'None in the last 24 runs (earlier history unchecked)' : 'Never recorded';
+};
 
 const HealthCard = ({ title, health }) => {
   if (!health) return null;
+  const label = health.status === 'no_activity' ? 'no activity (24h)' : health.status;
   return (
     <div className="bg-[#12121c] border border-white/10 rounded-xl p-5">
       <div className="flex items-center justify-between mb-3">
         <p className="text-sm font-semibold text-slate-200">{title}</p>
         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ring-1 ${statusColor(health.status)}`}>
-          {health.status}{health.stale ? ' (stale)' : ''}
+          {label}{health.stale ? ' (stale)' : ''}
         </span>
       </div>
       <p className="text-xs text-slate-500">Last run: {toIST(health.lastRunAt)}</p>
@@ -151,8 +172,30 @@ const AdminOverview = () => {
                         <span className="text-sm font-medium text-slate-200">{p.name}</span>
                         <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${statusColor(p.latestOutcome)}`}>{p.latestOutcome}</span>
                       </div>
-                      <p className="text-xs text-slate-500 mt-1">Last success: {toIST(p.lastSuccessAt)}</p>
-                      {p.consecutiveFailures > 0 && <p className="text-xs text-red-400 mt-0.5">{p.consecutiveFailures} consecutive failure(s)</p>}
+                      <p className="text-xs text-slate-500 mt-1">Last success: {describeLastSuccess(p)}</p>
+                      {p.consecutiveFailures > 0 && <p className="text-xs text-red-400 mt-0.5">{describeProviderStreak(p)}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Board-level failures — deliberately separate from the provider
+                cards above: a provider card's streak is the whole provider's
+                per-cycle outcome, which goes non-success the moment even ONE
+                board/category fails that cycle. This section is the only
+                place that shows WHICH specific board is actually broken, so
+                "one bad token" is never mistaken for "the whole provider is
+                down". */}
+            {data.fetch?.failingBoards?.length > 0 && (
+              <div className="bg-[#12121c] border border-white/10 rounded-xl p-5">
+                <p className="text-sm font-semibold text-slate-200 mb-1">Failing boards</p>
+                <p className="text-xs text-slate-500 mb-3">Individual companies/boards failing repeatedly — distinct from the provider-wide status above; one of these can taint its provider's streak without the whole provider being down.</p>
+                <div className="flex flex-col divide-y divide-white/[0.06]">
+                  {data.fetch.failingBoards.map((b) => (
+                    <div key={b.name} className="py-2 flex items-center justify-between gap-3">
+                      <span className="text-sm text-slate-300">{b.name}</span>
+                      <span className="text-xs text-red-400">{b.consecutiveFailures} in a row · {b.lastReason || 'unknown reason'}</span>
                     </div>
                   ))}
                 </div>
@@ -161,15 +204,22 @@ const AdminOverview = () => {
 
             {/* Matching backlog */}
             <div className="bg-[#12121c] border border-white/10 rounded-xl p-5">
-              <p className="text-sm font-semibold text-slate-200 mb-3">Matching backlog</p>
+              <p className="text-sm font-semibold text-slate-200 mb-1">Matching backlog</p>
+              <p className="text-xs text-slate-500 mb-3">Last successful match cycle: {toIST(data.match?.lastSuccessfulRunAt)}{data.match?.lastRunAt && data.match.lastSuccessfulRunAt !== data.match.lastRunAt ? ` (most recent attempt: ${toIST(data.match.lastRunAt)})` : ''}</p>
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
                   <p className="text-2xl font-bold text-slate-100">{data.match?.pendingBacklog?.count ?? '—'}</p>
                   <p className="text-xs text-slate-500">Jobs awaiting matching{data.match?.pendingBacklog?.oldestPendingAgeMs ? `, oldest ${Math.round(data.match.pendingBacklog.oldestPendingAgeMs / 3600000)}h` : ''}</p>
+                  {data.match?.idealDrainEstimate?.pendingBacklogHours > 0 && (
+                    <p className="text-[11px] text-slate-600 mt-1">~{data.match.idealDrainEstimate.pendingBacklogHours}h ideal estimate to drain — assumes the hourly cron runs every tick with no new backlog; not a measurement of actual progress.</p>
+                  )}
                 </div>
                 <div>
                   <p className="text-2xl font-bold text-slate-100">{data.match?.versionBacklog ?? '—'}</p>
                   <p className="text-xs text-slate-500">UserJob records on a stale matcher version</p>
+                  {data.match?.idealDrainEstimate?.versionBacklogHours > 0 && (
+                    <p className="text-[11px] text-slate-600 mt-1">~{data.match.idealDrainEstimate.versionBacklogHours}h ideal estimate to drain — same assumptions as above.</p>
+                  )}
                 </div>
               </div>
             </div>
@@ -191,6 +241,12 @@ const AdminOverview = () => {
                           <span className="font-medium capitalize">{e.provider}</span> · {e.operation}{e.boardToken ? ` (${e.boardToken})` : ''}
                         </p>
                         <p className="text-xs text-slate-600">{toIST(e.requestedAt)} · {e.durationMs}ms{e.statusCode ? ` · HTTP ${e.statusCode}` : ''} · {e.errorKind || 'error'}</p>
+                        {/* For budget_exceeded specifically, errorMessage carries which
+                            deadline actually tripped ("(provider)" vs "(cycle)" vs
+                            "(provider+cycle)") — a provider's own budget running out is
+                            self-contained; the shared cycle budget running out means
+                            every remaining provider that cycle was starved too. */}
+                        {e.errorMessage && <p className="text-xs text-slate-700 mt-0.5">{e.errorMessage}</p>}
                       </div>
                       <button onClick={() => navigate(`/admin/traces/${e.traceId}`)} className="text-xs text-violet-400 hover:text-violet-300 font-medium whitespace-nowrap">View trace →</button>
                     </div>

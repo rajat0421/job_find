@@ -20,8 +20,8 @@ jest.mock('../../models/EmailLog', () => ({
   findOne: jest.fn(),
 }));
 jest.mock('../../models/Config', () => ({ findOne: jest.fn() }));
-jest.mock('../../services/email.service', () => ({ sendJobDigestEmail: jest.fn(), sendAdminDigestCopy: jest.fn() }));
-jest.mock('../../services/config.service', () => ({ getEmailThreshold: jest.fn() }));
+jest.mock('../../services/email.service', () => ({ sendJobDigestEmail: jest.fn(), sendAdminDigestCopy: jest.fn(), isSafeHttpUrl: jest.requireActual('../../services/email.service').isSafeHttpUrl }));
+jest.mock('../../services/config.service', () => ({ getEmailThreshold: jest.fn(), getEmailFreshnessConfig: jest.fn().mockResolvedValue({ defaultMaxAgeDays: 30, adzunaMaxAgeDays: 14 }) }));
 
 const User = require('../../models/User');
 const UserJob = require('../../models/UserJob');
@@ -79,7 +79,7 @@ test('once the record is rescored under the current profile (userFingerprint mat
   const currentFingerprint = computeUserFingerprint(user);
   const freshRecord = {
     _id: 'uj1',
-    jobId: { title: 'Backend Role', status: 'active', needsMatching: false },
+    jobId: { title: 'Backend Role', status: 'active', needsMatching: false, postedAt: new Date(), applyLink: 'https://example.com/apply' },
     score: 90,
     matcherVersion: MATCHER_VERSION,
     userFingerprint: currentFingerprint,

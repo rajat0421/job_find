@@ -3,8 +3,11 @@ const User = require('../models/User');
 const UserJob = require('../models/UserJob');
 const EmailLog = require('../models/EmailLog');
 const Config = require('../models/Config');
-const { sendJobDigestEmail, sendAdminDigestCopy } = require('../services/email.service');
-const { getEmailThreshold } = require('../services/config.service');
+const { sendJobDigestEmail, sendAdminDigestCopy, isSafeHttpUrl } = require('../services/email.service');
+const {
+  getEmailThreshold, getEmailFreshnessConfig,
+  DEFAULT_EMAIL_FRESHNESS_MAX_AGE_DAYS, ADZUNA_EMAIL_FRESHNESS_MAX_AGE_DAYS,
+} = require('../services/config.service');
 const { MATCHER_VERSION, computeUserFingerprint } = require('../services/jobMatcher.service');
 
 const getISTHour = () => {
@@ -165,7 +168,46 @@ const INACTIVE_JOB_STATUSES = ['closed', 'expired'];
 // user's current fingerprint (already in memory — no extra query) catches
 // that race without scanning anything beyond this same bounded,
 // already-thresholded candidate list.
-const getEligibleDigestJobs = async (user, threshold) => {
+// Posting-age freshness (Improvement: stale-job email protection). Gated on
+// `postedAt` specifically — the provider's own original-publication
+// timestamp (see models/Job.js's field comment and the Greenhouse ingestion
+// fix that corrected it to come from `first_published`, never `updated_at`)
+// — never `updatedAt`/`lastSeenAt`/`sourceUpdatedAt`, which only say when
+// THIS system last touched or re-observed the record, not when the position
+// was actually first posted.
+//
+// Missing or unparseable `postedAt` is treated as NOT fresh, deliberately —
+// an unknown publish date is never proof a posting is recent. The practical
+// effect: a legacy Job document that predates reliable postedAt capture (or
+// whose postedAt was captured under the old, since-fixed Greenhouse
+// semantics — see that fix's report) is excluded from new digests until it
+// is next successfully re-observed by its source adapter, which refreshes
+// `postedAt` unconditionally whenever the provider supplies one (it's in
+// jobLifecycle.service.js's MERGEABLE_FIELDS). This does not touch, hide, or
+// delete the record itself — it only withholds it from a future email send;
+// saved/applied/already-emailed history is completely unaffected.
+const isPostingFreshEnough = (job, freshness = {}) => {
+  const {
+    defaultMaxAgeDays = DEFAULT_EMAIL_FRESHNESS_MAX_AGE_DAYS,
+    adzunaMaxAgeDays = ADZUNA_EMAIL_FRESHNESS_MAX_AGE_DAYS,
+  } = freshness || {};
+
+  if (!job.postedAt) return false;
+  const postedAtMs = new Date(job.postedAt).getTime();
+  if (Number.isNaN(postedAtMs)) return false;
+
+  const maxAgeDays = job.source === 'adzuna' ? adzunaMaxAgeDays : defaultMaxAgeDays;
+  const ageMs = Date.now() - postedAtMs;
+  return ageMs <= maxAgeDays * 24 * 60 * 60 * 1000;
+};
+
+// `freshness` ({defaultMaxAgeDays, adzunaMaxAgeDays}) is normally fetched
+// once per sendDigest/sendDigestForUser call and threaded through here —
+// same pattern as `threshold` (getEmailThreshold) — so N due users in one
+// tick don't each trigger their own Config read. Optional, with the same
+// defaults applied internally, so a caller that omits it (existing tests,
+// any future direct caller) keeps working.
+const getEligibleDigestJobs = async (user, threshold, freshness) => {
   const currentUserFingerprint = computeUserFingerprint(user);
   const candidates = await UserJob.find({
     userId: user._id,
@@ -178,7 +220,13 @@ const getEligibleDigestJobs = async (user, threshold) => {
     .populate('jobId');
 
   return candidates.filter((uj) => uj.jobId && !INACTIVE_JOB_STATUSES.includes(uj.jobId.status) && !uj.jobId.needsMatching
-    && uj.userFingerprint === currentUserFingerprint);
+    && uj.userFingerprint === currentUserFingerprint
+    && isPostingFreshEnough(uj.jobId, freshness)
+    // Syntax-only — confirms the URL is a well-formed http(s) link, never
+    // that it's actually reachable (no outbound request is made here or
+    // anywhere in this selection path). A job with no usable link simply
+    // isn't sent; the record and its score are left completely untouched.
+    && isSafeHttpUrl(uj.jobId.applyLink));
 };
 
 // force=true (manual "Send emails now") bypasses each user's scheduled hour/interval
@@ -195,9 +243,10 @@ const sendDigest = async ({ force = false } = {}) => {
   const adminCfg = await Config.findOne({ key: 'adminNotificationEmail' });
   const adminEmail = adminCfg?.value || null;
   const threshold = await getEmailThreshold();
+  const freshness = await getEmailFreshnessConfig();
 
   for (const user of due) {
-    const newJobs = await getEligibleDigestJobs(user, threshold);
+    const newJobs = await getEligibleDigestJobs(user, threshold, freshness);
 
     if (!newJobs.length) {
       const [totalMatched, totalUnread] = await Promise.all([
@@ -326,4 +375,5 @@ module.exports = {
   scheduledIdempotencyKey,
   manualIdempotencyKey,
   getEligibleDigestJobs,
+  isPostingFreshEnough,
 };

@@ -7,7 +7,7 @@ const FetchRun = require('../models/FetchRun');
 const MatchRun = require('../models/MatchRun');
 const EmailLog = require('../models/EmailLog');
 const Job = require('../models/Job');
-const { getPendingMatchBacklog, getMatcherVersionBacklog } = require('./jobMatcher.service');
+const { getPendingMatchBacklog, getMatcherVersionBacklog, PENDING_BATCH_SIZE, VERSION_SWEEP_BATCH_SIZE } = require('./jobMatcher.service');
 
 // ── Documented, configurable warning thresholds ─────────────────────────────
 // All are soft, dashboard/log-level signals only — nothing here blocks a
@@ -113,11 +113,29 @@ const getFetchHealth = async () => {
   const providers = providerNames.map((name) => {
     const lastSuccessRun = recentRuns.find((r) => (r.sources || []).some((s) => s.name === name && s.outcome === 'success'));
     const latestSource = (latest.sources || []).find((s) => s.name === name);
+    const consecutiveFailures = consecutiveNonSuccess(recentRuns, (r) => (r.sources || []).find((s) => s.name === name)?.outcome);
+    // True only when the streak reaches the FULL inspected window AND that
+    // window is itself full (RECENT_FETCH_RUNS_WINDOW runs actually exist) —
+    // i.e. every run this query can see was non-success, but older history
+    // beyond the window (which might contain an earlier success) was never
+    // examined. consecutiveFailures is then a floor, not an exact count, and
+    // lastSuccessAt:null means "no success in the visible window", not
+    // "never, in this database's full history". When recentRuns.length is
+    // itself below the window (less history exists than the window allows),
+    // the streak already covers everything there is — not capped, and
+    // lastSuccessAt:null there really does mean "never, in all recorded
+    // history".
+    const consecutiveFailuresCapped = consecutiveFailures === RECENT_FETCH_RUNS_WINDOW && recentRuns.length === RECENT_FETCH_RUNS_WINDOW;
     return {
       name,
       latestOutcome: latestSource?.outcome || 'unknown',
+      // When null, consult consecutiveFailuresCapped to tell "no success in
+      // the visible window" (capped: true — older history is unexamined)
+      // apart from "never succeeded in all recorded history" (capped: false
+      // — recentRuns already covers everything there is).
       lastSuccessAt: lastSuccessRun?.createdAt || null,
-      consecutiveFailures: consecutiveNonSuccess(recentRuns, (r) => (r.sources || []).find((s) => s.name === name)?.outcome),
+      consecutiveFailures,
+      consecutiveFailuresCapped,
       aborted: latestSource?.aborted || false,
       budgetExceeded: latestSource?.budgetExceeded || null,
     };
@@ -142,10 +160,13 @@ const getFetchHealth = async () => {
     });
   }
   if (degraded.length) {
+    const describe = (p) => p.consecutiveFailuresCapped
+      ? `${p.name} (24+, all ${RECENT_FETCH_RUNS_WINDOW} recent runs lacked a clean result)`
+      : `${p.name} (${p.consecutiveFailures})`;
     warnings.push({
       code: 'fetch_provider_failing',
       severity: 'warning',
-      message: `${degraded.map((p) => p.name).join(', ')} failing ${THRESHOLDS.FETCH_CONSECUTIVE_FAILURES}+ run(s) in a row`,
+      message: `${degraded.map(describe).join(', ')} failing ${THRESHOLDS.FETCH_CONSECUTIVE_FAILURES}+ run(s) in a row`,
     });
   }
   if ((latest.durationMs || 0) >= THRESHOLDS.FETCH_DURATION_WARN_MS) {
@@ -184,11 +205,29 @@ const getFetchHealth = async () => {
 // supplied by a caller that already computed them this request (e.g.
 // getOperationalOverview) to avoid running the same bounded query twice.
 const getMatchHealth = async ({ pendingBacklog, versionBacklog } = {}) => {
-  const [latestRun, resolvedPendingBacklog, resolvedVersionBacklog] = await Promise.all([
+  const [latestRun, lastSuccessfulRun, resolvedPendingBacklog, resolvedVersionBacklog] = await Promise.all([
     MatchRun.findOne().sort({ createdAt: -1 }).lean(),
+    // Distinct from `latestRun` above, which may itself be 'partial'/
+    // 'failed' — this is "when did the pipeline last definitely work",
+    // visible even while the most recent attempt(s) are degraded. Index-
+    // covered by MatchRun's {outcome,createdAt} index (see models/MatchRun.js).
+    MatchRun.findOne({ outcome: 'success' }).sort({ createdAt: -1 }).lean(),
     pendingBacklog ?? getPendingMatchBacklog(),
     versionBacklog ?? getMatcherVersionBacklog(),
   ]);
+
+  // Best-case, NOT a prediction: assumes the hourly cron completes
+  // successfully every single tick from now on, with no new backlog added in
+  // the meantime (new fetch results will add to needsMatching in practice,
+  // and a stalled cron won't tick at all) — a lower bound on real elapsed
+  // time, never a measurement of actual progress. See
+  // getOperationalOverview's/this function's callers for how this is
+  // labeled; never present this number as a completion forecast.
+  const idealDrainEstimate = {
+    pendingBacklogHours: resolvedPendingBacklog.count > 0 ? Math.ceil(resolvedPendingBacklog.count / PENDING_BATCH_SIZE) : 0,
+    versionBacklogHours: resolvedVersionBacklog > 0 ? Math.ceil(resolvedVersionBacklog / VERSION_SWEEP_BATCH_SIZE) : 0,
+    assumptions: 'Best case only: assumes the hourly match cron completes successfully every tick with no new backlog added. Not a measurement of actual progress.',
+  };
 
   const warnings = [];
   if (resolvedPendingBacklog.oldestPendingAgeMs !== null && resolvedPendingBacklog.oldestPendingAgeMs >= THRESHOLDS.MATCH_PENDING_AGE_WARN_MS) {
@@ -207,7 +246,12 @@ const getMatchHealth = async ({ pendingBacklog, versionBacklog } = {}) => {
   }
 
   if (!latestRun) {
-    return { status: 'unknown', message: 'No match runs recorded yet', pendingBacklog: resolvedPendingBacklog, versionBacklog: resolvedVersionBacklog, warnings };
+    return {
+      status: 'unknown', message: 'No match runs recorded yet',
+      lastSuccessfulRunAt: lastSuccessfulRun?.createdAt || null,
+      pendingBacklog: resolvedPendingBacklog, versionBacklog: resolvedVersionBacklog,
+      idealDrainEstimate, warnings,
+    };
   }
 
   if (latestRun.outcome === 'failed') {
@@ -232,6 +276,7 @@ const getMatchHealth = async ({ pendingBacklog, versionBacklog } = {}) => {
     status: latestRun.outcome,
     stale,
     lastRunAt: latestRun.createdAt,
+    lastSuccessfulRunAt: lastSuccessfulRun?.createdAt || null,
     startedAt: latestRun.startedAt,
     finishedAt: latestRun.finishedAt,
     durationMs: latestRun.durationMs,
@@ -246,6 +291,7 @@ const getMatchHealth = async ({ pendingBacklog, versionBacklog } = {}) => {
     errorSummary: latestRun.errorSummary || [],
     pendingBacklog: resolvedPendingBacklog,
     versionBacklog: resolvedVersionBacklog,
+    idealDrainEstimate,
     warnings,
   };
 };
@@ -287,11 +333,24 @@ const getEmailHealth = async () => {
     });
   }
 
+  // Audit finding: 'success' was previously the default whenever last24h had
+  // zero failures — which is also true when NOTHING happened at all (no
+  // sent, no skipped, no failed), vacuously. That made "the email pipeline
+  // hasn't run" indistinguishable from "it ran and everything succeeded" on
+  // this one field alone. 'no_activity' is now reported explicitly whenever
+  // the 24h window contains zero EmailLog rows of any kind, so a reader
+  // never has to infer "quiet" from "healthy" — they're different states.
+  const totalWindowEvents = last24h.sent + last24h.skipped + last24h.failed;
+  const status = totalWindowEvents === 0
+    ? 'no_activity'
+    : last24h.failed > 0 ? (last24h.sent > 0 ? 'partial' : 'failed') : 'success';
+
   return {
     // Summarizes the 24h window only — 'failed' means at least one delivery
     // failed and none succeeded; 'partial' means a mix; 'success' means no
-    // failures (which includes "nothing was due" — not the same as "sent").
-    status: last24h.failed > 0 ? (last24h.sent > 0 ? 'partial' : 'failed') : 'success',
+    // failures AND at least one real event this window; 'no_activity' means
+    // nothing happened at all (never conflated with "success" — see above).
+    status,
     last24h,
     previous24h,
     lastSuccessAt: lastSuccess?.sentAt || null,
@@ -334,7 +393,7 @@ const getJobFreshnessHealth = async ({ pendingBacklog, versionBacklog, failingBo
 // render a status pill without re-deriving the logic itself.
 const indicatorFor = (status, warnings = []) => {
   if (status === 'failed' || warnings.some((w) => w.severity === 'error')) return 'error';
-  if (status === 'partial' || status === 'unknown' || warnings.length) return 'warning';
+  if (status === 'partial' || status === 'unknown' || status === 'no_activity' || warnings.length) return 'warning';
   return 'ok';
 };
 

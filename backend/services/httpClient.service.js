@@ -61,8 +61,24 @@ const retryDelayMs = (attempt, err) => {
   return Math.min(backoff + jitter, MAX_RETRY_AFTER_MS);
 };
 
-const budgetExceededError = () =>
-  Object.assign(new Error('Fetch time budget exceeded before this request could be attempted'), { budgetExceeded: true });
+// `expiredKinds` (e.g. ['provider'], ['cycle'], or both) records WHICH
+// deadline(s) had already run out — distinguishing "this provider's own
+// budget is exhausted" (self-contained, doesn't affect any other provider)
+// from "the shared cycle budget is exhausted" (every remaining provider this
+// cycle is about to be starved too) is operationally meaningful, and was
+// previously impossible to tell apart from a stored trace's generic
+// 'budget_exceeded' classification alone. classifyError()'s return value is
+// deliberately left unchanged (still the bare 'budget_exceeded' string) so
+// isRetryable() and every existing caller/test keeps working exactly as
+// before — the extra detail travels in the message text (captured verbatim,
+// sanitized, into the trace's errorMessage) and on the error object itself.
+const budgetExceededError = (expiredKinds = []) => {
+  const scope = expiredKinds.length ? expiredKinds.join('+') : 'unknown';
+  return Object.assign(new Error(`Fetch time budget exceeded (${scope}) before this request could be attempted`), {
+    budgetExceeded: true,
+    budgetExceededScope: expiredKinds,
+  });
+};
 
 /**
  * axios.get with a bounded timeout and bounded, selective retries. A near
@@ -90,12 +106,13 @@ const budgetExceededError = () =>
 const getWithRetryCore = async (url, config = {}, stats = null, deadlines = []) => {
   const list = (Array.isArray(deadlines) ? deadlines : [deadlines]).filter(Boolean);
   const isExpired = () => list.some((d) => d.expired());
+  const expiredKinds = () => list.filter((d) => d.expired()).map((d) => d.kind).filter(Boolean);
   const minRemainingMs = () => (list.length ? Math.min(...list.map((d) => d.remainingMs())) : Infinity);
 
   const timeout = config.timeout || DEFAULT_TIMEOUT_MS;
   let lastErr;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    if (isExpired()) throw lastErr || budgetExceededError();
+    if (isExpired()) throw lastErr || budgetExceededError(expiredKinds());
     try {
       return await axios.get(url, { ...config, timeout });
     } catch (err) {

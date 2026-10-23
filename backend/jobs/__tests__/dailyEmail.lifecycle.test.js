@@ -15,8 +15,8 @@ jest.mock('../../models/EmailLog', () => ({
   findOne: jest.fn(),
 }));
 jest.mock('../../models/Config', () => ({ findOne: jest.fn() }));
-jest.mock('../../services/email.service', () => ({ sendJobDigestEmail: jest.fn(), sendAdminDigestCopy: jest.fn() }));
-jest.mock('../../services/config.service', () => ({ getEmailThreshold: jest.fn() }));
+jest.mock('../../services/email.service', () => ({ sendJobDigestEmail: jest.fn(), sendAdminDigestCopy: jest.fn(), isSafeHttpUrl: jest.requireActual('../../services/email.service').isSafeHttpUrl }));
+jest.mock('../../services/config.service', () => ({ getEmailThreshold: jest.fn(), getEmailFreshnessConfig: jest.fn().mockResolvedValue({ defaultMaxAgeDays: 30, adzunaMaxAgeDays: 14 }) }));
 
 const User = require('../../models/User');
 const UserJob = require('../../models/UserJob');
@@ -46,7 +46,7 @@ beforeEach(() => {
 });
 
 test('closed/expired jobs are dropped from the digest selection; the active one still sends', async () => {
-  const active = { _id: 'uj1', jobId: { title: 'Open role' }, score: 90, userFingerprint: DUE_USER_FINGERPRINT };
+  const active = { _id: 'uj1', jobId: { title: 'Open role', postedAt: new Date(), applyLink: 'https://example.com/apply' }, score: 90, userFingerprint: DUE_USER_FINGERPRINT };
   const closed = { _id: 'uj2', jobId: { title: 'Closed role', status: 'closed' }, score: 85 };
   const expired = { _id: 'uj3', jobId: { title: 'Expired role', status: 'expired' }, score: 80 };
   UserJob.find.mockReturnValue(buildUserJobQuery([active, closed, expired]));
@@ -61,7 +61,7 @@ test('closed/expired jobs are dropped from the digest selection; the active one 
 });
 
 test('a closed/expired UserJob is never marked emailed, even though it was excluded this cycle', async () => {
-  const active = { _id: 'uj1', jobId: { title: 'Open role' }, score: 90, userFingerprint: DUE_USER_FINGERPRINT };
+  const active = { _id: 'uj1', jobId: { title: 'Open role', postedAt: new Date(), applyLink: 'https://example.com/apply' }, score: 90, userFingerprint: DUE_USER_FINGERPRINT };
   const closed = { _id: 'uj2', jobId: { title: 'Closed role', status: 'closed' }, score: 85 };
   UserJob.find.mockReturnValue(buildUserJobQuery([active, closed]));
   sendJobDigestEmail.mockResolvedValue();

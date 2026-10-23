@@ -998,13 +998,16 @@ const sendDigestForUser = async (req, res) => {
     const EmailLog = require('../models/EmailLog');
     const Config = require('../models/Config');
     const { claimDelivery, manualIdempotencyKey, getEligibleDigestJobs } = require('../jobs/dailyEmail.job');
+    const { getEmailFreshnessConfig } = require('../services/config.service');
 
     const threshold = await getEmailThreshold();
+    const freshness = await getEmailFreshnessConfig();
     // Shared with the scheduled cron (sendDigest) — same matcherVersion,
-    // needsMatching, job-status and userFingerprint staleness checks apply
-    // here now too, closing the gap where this manual path previously used
-    // its own, separately-maintained (and drifted) query.
-    const newJobs = await getEligibleDigestJobs(user, threshold);
+    // needsMatching, job-status, userFingerprint, posting-freshness, and
+    // application-link staleness checks apply here now too, closing the gap
+    // where this manual path previously used its own, separately-maintained
+    // (and drifted) query.
+    const newJobs = await getEligibleDigestJobs(user, threshold, freshness);
 
     if (!newJobs.length) return res.status(400).json({ message: `No unread jobs with score ≥ ${threshold} for this user` });
 

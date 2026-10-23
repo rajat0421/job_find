@@ -23,8 +23,9 @@ jest.mock('../../models/Config', () => ({ findOne: jest.fn() }));
 jest.mock('../../services/email.service', () => ({
   sendJobDigestEmail: jest.fn(),
   sendAdminDigestCopy: jest.fn(),
+  isSafeHttpUrl: jest.requireActual('../../services/email.service').isSafeHttpUrl,
 }));
-jest.mock('../../services/config.service', () => ({ getEmailThreshold: jest.fn() }));
+jest.mock('../../services/config.service', () => ({ getEmailThreshold: jest.fn(), getEmailFreshnessConfig: jest.fn().mockResolvedValue({ defaultMaxAgeDays: 30, adzunaMaxAgeDays: 14 }) }));
 
 const User = require('../../models/User');
 const UserJob = require('../../models/UserJob');
@@ -55,7 +56,7 @@ beforeEach(() => {
 });
 
 test('send failure: does NOT mark emailed, does NOT advance lastEmailedAt, logs failed', async () => {
-  const matchedJob = { _id: 'uj1', jobId: { title: 'Backend Engineer' }, score: 80, userFingerprint: DUE_USER_FINGERPRINT };
+  const matchedJob = { _id: 'uj1', jobId: { title: 'Backend Engineer', postedAt: new Date(), applyLink: 'https://example.com/apply' }, score: 80, userFingerprint: DUE_USER_FINGERPRINT };
   UserJob.find.mockReturnValue(buildUserJobQuery([matchedJob]));
   sendJobDigestEmail.mockRejectedValue(new Error('smtp down'));
 
@@ -88,7 +89,7 @@ test('0 eligible jobs: logs skipped, does NOT advance lastEmailedAt (user stays 
 });
 
 test('success path: marks emailed, advances lastEmailedAt, logs sent', async () => {
-  const matchedJob = { _id: 'uj1', jobId: { title: 'Backend Engineer' }, score: 80, userFingerprint: DUE_USER_FINGERPRINT };
+  const matchedJob = { _id: 'uj1', jobId: { title: 'Backend Engineer', postedAt: new Date(), applyLink: 'https://example.com/apply' }, score: 80, userFingerprint: DUE_USER_FINGERPRINT };
   UserJob.find.mockReturnValue(buildUserJobQuery([matchedJob]));
   sendJobDigestEmail.mockResolvedValue();
 

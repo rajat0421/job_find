@@ -15,8 +15,8 @@ jest.mock('../../models/EmailLog', () => ({
   findOne: jest.fn(),
 }));
 jest.mock('../../models/Config', () => ({ findOne: jest.fn() }));
-jest.mock('../../services/email.service', () => ({ sendJobDigestEmail: jest.fn(), sendAdminDigestCopy: jest.fn() }));
-jest.mock('../../services/config.service', () => ({ getEmailThreshold: jest.fn() }));
+jest.mock('../../services/email.service', () => ({ sendJobDigestEmail: jest.fn(), sendAdminDigestCopy: jest.fn(), isSafeHttpUrl: jest.requireActual('../../services/email.service').isSafeHttpUrl }));
+jest.mock('../../services/config.service', () => ({ getEmailThreshold: jest.fn(), getEmailFreshnessConfig: jest.fn().mockResolvedValue({ defaultMaxAgeDays: 30, adzunaMaxAgeDays: 14 }) }));
 
 const User = require('../../models/User');
 const UserJob = require('../../models/UserJob');
@@ -68,7 +68,7 @@ test('a job awaiting reprocessing (needsMatching:true) is withheld from the dige
 });
 
 test('once the job is no longer pending (needsMatching:false), the same user becomes eligible again', async () => {
-  const current = { _id: 'uj1', jobId: { title: 'Role', status: 'active', needsMatching: false }, score: 90, userFingerprint: DUE_USER_FINGERPRINT };
+  const current = { _id: 'uj1', jobId: { title: 'Role', status: 'active', needsMatching: false, postedAt: new Date(), applyLink: 'https://example.com/apply' }, score: 90, userFingerprint: DUE_USER_FINGERPRINT };
   UserJob.find.mockReturnValue(buildUserJobQuery([current]));
   sendJobDigestEmail.mockResolvedValue();
 
@@ -90,7 +90,7 @@ test("withholding a stale record never marks it emailed, and never advances the 
 });
 
 test('a legitimately current, active, non-pending match still sends normally (no over-withholding)', async () => {
-  const current = { _id: 'uj1', jobId: { title: 'Role', status: 'active', needsMatching: false }, score: 90, userFingerprint: DUE_USER_FINGERPRINT };
+  const current = { _id: 'uj1', jobId: { title: 'Role', status: 'active', needsMatching: false, postedAt: new Date(), applyLink: 'https://example.com/apply' }, score: 90, userFingerprint: DUE_USER_FINGERPRINT };
   UserJob.find.mockReturnValue(buildUserJobQuery([current]));
   sendJobDigestEmail.mockResolvedValue();
 

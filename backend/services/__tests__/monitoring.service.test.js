@@ -11,6 +11,8 @@ jest.mock('../../models/Job', () => ({ countDocuments: jest.fn() }));
 jest.mock('../jobMatcher.service', () => ({
   getPendingMatchBacklog: jest.fn(),
   getMatcherVersionBacklog: jest.fn(),
+  PENDING_BATCH_SIZE: 200,
+  VERSION_SWEEP_BATCH_SIZE: 300,
 }));
 
 const FetchRun = require('../../models/FetchRun');
@@ -135,6 +137,56 @@ describe('getFetchHealth', () => {
     expect(health.failingBoards).toEqual([expect.objectContaining({ name: 'AcmeCo', consecutiveFailures: 2, lastReason: 'timeout' })]);
   });
 
+  // Monitoring correction: RECENT_FETCH_RUNS_WINDOW (24) caps how far back
+  // this query ever looks, so a streak that reaches exactly 24 is a floor,
+  // not an exact count — there may be more failures, or an earlier success,
+  // beyond what this query ever sees.
+  describe('consecutiveFailuresCapped (monitoring correction)', () => {
+    test('is true when the streak exactly fills the full inspected window', async () => {
+      const runs = Array.from({ length: 24 }, (_, i) => ({
+        createdAt: new Date(24 - i), outcome: 'partial', sources: [{ name: 'Greenhouse', outcome: 'partial' }],
+      }));
+      FetchRun.find.mockReturnValue(buildQuery(runs));
+
+      const health = await getFetchHealth();
+
+      const gh = health.providers.find((p) => p.name === 'Greenhouse');
+      expect(gh.consecutiveFailures).toBe(24);
+      expect(gh.consecutiveFailuresCapped).toBe(true);
+      expect(gh.lastSuccessAt).toBeNull();
+      expect(health.warnings.find((w) => w.code === 'fetch_provider_failing').message).toMatch(/24\+/);
+    });
+
+    test('is false when fewer total runs exist than the window — the streak IS the complete history, not a truncated view', async () => {
+      const runs = [
+        { createdAt: new Date(2), outcome: 'partial', sources: [{ name: 'Greenhouse', outcome: 'partial' }] },
+        { createdAt: new Date(1), outcome: 'partial', sources: [{ name: 'Greenhouse', outcome: 'partial' }] },
+      ];
+      FetchRun.find.mockReturnValue(buildQuery(runs));
+
+      const health = await getFetchHealth();
+
+      const gh = health.providers.find((p) => p.name === 'Greenhouse');
+      expect(gh.consecutiveFailures).toBe(2);
+      expect(gh.consecutiveFailuresCapped).toBe(false); // this really is "never, in all recorded history"
+    });
+
+    test('is false when the streak is below the window even though 24 runs exist', async () => {
+      const runs = [
+        { createdAt: new Date(3), outcome: 'partial', sources: [{ name: 'Greenhouse', outcome: 'partial' }] },
+        { createdAt: new Date(2), outcome: 'success', sources: [{ name: 'Greenhouse', outcome: 'success' }] },
+        ...Array.from({ length: 22 }, (_, i) => ({ createdAt: new Date(1 - i), outcome: 'partial', sources: [{ name: 'Greenhouse', outcome: 'partial' }] })),
+      ];
+      FetchRun.find.mockReturnValue(buildQuery(runs));
+
+      const health = await getFetchHealth();
+
+      const gh = health.providers.find((p) => p.name === 'Greenhouse');
+      expect(gh.consecutiveFailures).toBe(1);
+      expect(gh.consecutiveFailuresCapped).toBe(false);
+    });
+  });
+
   test('the fetch-run scan is bounded (not a full collection scan)', async () => {
     const query = buildQuery([]);
     FetchRun.find.mockReturnValue(query);
@@ -197,6 +249,71 @@ describe('getMatchHealth', () => {
     const health = await getMatchHealth({ pendingBacklog: { count: 0, oldestPendingAgeMs: null }, versionBacklog: 0 });
     expect(health.warnings.some((w) => w.code === 'match_pending_stale')).toBe(false);
   });
+
+  // Monitoring correction: the dashboard previously had no way to show "when
+  // did the pipeline last definitely work" independent of whatever the MOST
+  // RECENT attempt's outcome happens to be — if the latest few ticks are
+  // 'partial'/'failed', this is the only field that still answers "but when
+  // did it last actually succeed".
+  describe('lastSuccessfulRunAt (monitoring correction)', () => {
+    test('is populated from the most recent run with outcome:success, even when the latest run is degraded', async () => {
+      const lastSuccess = new Date(Date.now() - 5 * 60 * 60 * 1000);
+      MatchRun.findOne
+        .mockReturnValueOnce(buildQuery({ outcome: 'failed', createdAt: new Date(), created: 0, updated: 0, errorCount: 2, pendingMarkedProcessed: false }))
+        .mockReturnValueOnce(buildQuery({ outcome: 'success', createdAt: lastSuccess }));
+
+      const health = await getMatchHealth();
+
+      expect(health.status).toBe('failed'); // the latest attempt's own outcome is untouched
+      expect(health.lastSuccessfulRunAt).toEqual(lastSuccess);
+    });
+
+    test('is null when no run has ever succeeded', async () => {
+      MatchRun.findOne
+        .mockReturnValueOnce(buildQuery({ outcome: 'failed', createdAt: new Date(), created: 0, updated: 0, errorCount: 2, pendingMarkedProcessed: false }))
+        .mockReturnValueOnce(buildQuery(null));
+
+      const health = await getMatchHealth();
+
+      expect(health.lastSuccessfulRunAt).toBeNull();
+    });
+
+    test('is still reported even when no run has been recorded at all (the "unknown" branch)', async () => {
+      MatchRun.findOne
+        .mockReturnValueOnce(buildQuery(null))
+        .mockReturnValueOnce(buildQuery(null));
+
+      const health = await getMatchHealth();
+
+      expect(health.status).toBe('unknown');
+      expect(health.lastSuccessfulRunAt).toBeNull();
+    });
+  });
+
+  // Monitoring correction: present an ideal, best-case drain estimate
+  // alongside the raw backlog counts, clearly labeled as an assumption-laden
+  // estimate — never something that could be mistaken for proof of actual
+  // progress.
+  describe('idealDrainEstimate (monitoring correction)', () => {
+    beforeEach(() => {
+      MatchRun.findOne.mockReturnValue(buildQuery({ outcome: 'success', createdAt: new Date(), created: 0, updated: 0, errorCount: 0, pendingMarkedProcessed: true }));
+    });
+
+    test('computes hours as backlog-size / batch-size, rounded up', async () => {
+      const health = await getMatchHealth({ pendingBacklog: { count: 450, oldestPendingAgeMs: null }, versionBacklog: 700 });
+
+      expect(health.idealDrainEstimate.pendingBacklogHours).toBe(3); // 450 / 200 = 2.25 -> 3
+      expect(health.idealDrainEstimate.versionBacklogHours).toBe(3); // 700 / 300 = 2.33 -> 3
+      expect(health.idealDrainEstimate.assumptions).toMatch(/best case|assumes/i);
+    });
+
+    test('is zero for an empty backlog, not a misleading non-zero minimum', async () => {
+      const health = await getMatchHealth({ pendingBacklog: { count: 0, oldestPendingAgeMs: null }, versionBacklog: 0 });
+
+      expect(health.idealDrainEstimate.pendingBacklogHours).toBe(0);
+      expect(health.idealDrainEstimate.versionBacklogHours).toBe(0);
+    });
+  });
 });
 
 describe('getEmailHealth', () => {
@@ -253,6 +370,45 @@ describe('getEmailHealth', () => {
     const health = await getEmailHealth();
 
     expect(health.warnings.some((w) => w.code === 'email_failures_increasing')).toBe(true);
+  });
+
+  // Monitoring correction: zero EmailLog rows in the last 24h previously
+  // defaulted to 'success' (last24h.failed === 0 is vacuously true when
+  // NOTHING happened), making "the pipeline hasn't run" indistinguishable
+  // from "it ran and everything succeeded".
+  describe('no_activity status (monitoring correction)', () => {
+    test('reports no_activity, not success, when the 24h window has zero events of any kind', async () => {
+      EmailLog.aggregate.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+      EmailLog.findOne.mockReturnValue(buildQuery(null));
+
+      const health = await getEmailHealth();
+
+      expect(health.status).toBe('no_activity');
+      expect(health.last24h).toEqual({ sent: 0, skipped: 0, failed: 0 });
+    });
+
+    test('reports success (not no_activity) when the window has only skips — that IS real activity', async () => {
+      EmailLog.aggregate.mockResolvedValueOnce([{ _id: 'skipped', count: 4 }]).mockResolvedValueOnce([]);
+      EmailLog.findOne.mockReturnValue(buildQuery({ sentAt: new Date() }));
+
+      const health = await getEmailHealth();
+
+      expect(health.status).toBe('success');
+    });
+
+    test('a no_activity status still surfaces the no-recent-success warning, so the overview indicator reads as a warning, not ok', async () => {
+      const { getOperationalOverview } = require('../monitoring.service');
+      FetchRun.find.mockReturnValue(buildQuery([]));
+      MatchRun.findOne.mockReturnValue(buildQuery(null));
+      EmailLog.aggregate.mockResolvedValue([]);
+      EmailLog.findOne.mockReturnValue(buildQuery(null));
+      Job.countDocuments.mockResolvedValue(0);
+
+      const overview = await getOperationalOverview();
+
+      expect(overview.email.status).toBe('no_activity');
+      expect(overview.email.indicator).toBe('warning');
+    });
   });
 });
 

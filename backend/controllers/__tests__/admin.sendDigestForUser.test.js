@@ -15,7 +15,7 @@ jest.mock('../../services/jobMatcher.service', () => ({
   computeUserFingerprint: jest.fn(), computeJobFingerprint: jest.fn(), MATCHER_VERSION: 1,
 }));
 jest.mock('../../services/companies.service', () => ({ getCompanies: jest.fn() }));
-jest.mock('../../services/config.service', () => ({ getEmailThreshold: jest.fn() }));
+jest.mock('../../services/config.service', () => ({ getEmailThreshold: jest.fn(), getEmailFreshnessConfig: jest.fn().mockResolvedValue({ defaultMaxAgeDays: 30, adzunaMaxAgeDays: 14 }) }));
 jest.mock('../../services/monitoring.service', () => ({ getOperationalOverview: jest.fn(), getFetchHealth: jest.fn(), getMatchHealth: jest.fn(), getEmailHealth: jest.fn() }));
 jest.mock('../../services/email.service', () => ({ sendJobDigestEmail: jest.fn(), sendAdminDigestCopy: jest.fn() }));
 jest.mock('../../models/EmailLog', () => ({ findByIdAndUpdate: jest.fn().mockResolvedValue({}) }));
@@ -58,7 +58,9 @@ test('a successful manual send claims the delivery, sends, and marks the claim s
   const res = mockRes();
   await sendDigestForUser({ params: { id: 'u1' }, body: {}, headers: {} }, res);
 
-  expect(getEligibleDigestJobs).toHaveBeenCalledWith(USER, 50); // delegates eligibility — no separate/drifted query
+  // delegates eligibility — no separate/drifted query; now also threads the
+  // posting-freshness config through, same as the scheduled cron does.
+  expect(getEligibleDigestJobs).toHaveBeenCalledWith(USER, 50, { defaultMaxAgeDays: 30, adzunaMaxAgeDays: 14 });
   expect(claimDelivery).toHaveBeenCalledWith('manual:u1:fixed-bucket', expect.objectContaining({ userId: 'u1' }));
   expect(UserJob.updateMany).toHaveBeenCalledWith({ _id: { $in: ['uj1'] } }, { emailed: true });
   expect(EmailLog.findByIdAndUpdate).toHaveBeenCalledWith('log1', { $set: expect.objectContaining({ status: 'sent' }) });

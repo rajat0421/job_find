@@ -29,7 +29,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/resume', resumeRoutes);
 
-app.get('/api/health', (_req, res) => res.json({ status: 'up', message: 'running' }));
+app.get('/api/health', (_req, res) => res.json({ status: 'up', message: 'running' , message2: "yes, rajat its running"}));
 
 // Manual full-pipeline trigger for local development only. Not registered at
 // all in production (so it's a plain 404, not just access-denied), and even

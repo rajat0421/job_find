@@ -236,6 +236,33 @@ describe('time-budget integration', () => {
     expect(result.outcome).toBe('partial'); // Adzuna itself still succeeded
   });
 
+  // Monitoring correction: a provider can discover its OWN provider/cycle
+  // budget already expired on its very first company/category check (before
+  // jobFetcher.service.js's outer, cycle-level skippedEntirely branch is even
+  // relevant) and return having attempted nothing. Previously this fell into
+  // the requestsAttempted===0 branch's "failures.length>0 ? failed : success"
+  // check, which never even looked at budgetExceeded — so a provider that
+  // fetched and attempted literally nothing could be reported as a quiet,
+  // healthy 'success'.
+  test('a provider whose OWN budget is already gone before its first request is reported failed, never success', async () => {
+    const budgetExceededFromTheStart = () => ({
+      added: 0, fetched: 0, requestsAttempted: 0, requestsFailed: 0, retries: 0,
+      companiesFailed: [], companiesSkipped: [{ name: 'a', reason: 'provider_budget_exceeded' }], budgetExceeded: 'provider',
+    });
+    adzuna.fetchJobs.mockResolvedValue(budgetExceededFromTheStart());
+    greenhouse.fetchJobs.mockResolvedValue(ok());
+    lever.fetchJobs.mockResolvedValue(ok());
+    ashby.fetchJobs.mockResolvedValue(ok());
+
+    const result = await fetchAdzunaJobs();
+
+    const saved = FetchRun.create.mock.calls[0][0];
+    const adzunaSource = saved.sources.find((s) => s.name === 'Adzuna');
+    expect(adzunaSource.outcome).toBe('failed');
+    expect(adzunaSource.requestsAttempted).toBe(0);
+    expect(result.outcome).toBe('partial'); // the other three providers still succeeded
+  });
+
   test('a cycle-budget-triggered skip is clearly distinguished from a legitimate empty success in the error summary', async () => {
     let expired = false;
     createCycleDeadline.mockReturnValue({ expired: () => expired, remainingMs: () => (expired ? 0 : 999999) });

@@ -46,5 +46,11 @@ const matchRunSchema = new mongoose.Schema({
 
 // Powers "latest run" (dashboard) and any bounded recent-history queries.
 matchRunSchema.index({ createdAt: -1 });
+// Powers "last recorded SUCCESSFUL run" (monitoring.service.js's
+// getMatchHealth) — distinct from the latest run above, which may itself be
+// 'partial'/'failed'. Without this, that query would filter on `outcome`
+// after the {createdAt:-1} index's scan order, which only stays cheap as
+// long as a success is reasonably recent.
+matchRunSchema.index({ outcome: 1, createdAt: -1 });
 
 module.exports = mongoose.model('MatchRun', matchRunSchema);

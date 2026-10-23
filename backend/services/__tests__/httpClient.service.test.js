@@ -182,6 +182,61 @@ describe('getWithRetry — deadline integration', () => {
     await expect(getWithRetry('https://example.com', {}, null, [providerDeadline, cycleDeadline])).rejects.toThrow(/budget exceeded/i);
     expect(axios.get).not.toHaveBeenCalled();
   });
+
+  // Monitoring correction: a stored trace's errorKind alone can only ever say
+  // 'budget_exceeded', never which deadline actually tripped — "this
+  // provider's own budget ran out" (self-contained) and "the shared cycle
+  // budget ran out" (every remaining provider this cycle is starved too) are
+  // very different operational situations. The distinction travels via the
+  // deadline's own `kind` (see fetchBudget.service.js) into the thrown
+  // error's message/budgetExceededScope — never through classifyError's
+  // return value, which stays the plain 'budget_exceeded' string so every
+  // existing caller (isRetryable, FetchRun's budgetExceeded field, etc.)
+  // keeps working unchanged.
+  describe('provider-vs-cycle budget distinction', () => {
+    test('a provider-only budget rejection names "provider" and nothing else', async () => {
+      const { getWithRetry } = require('../httpClient.service');
+      axios.get.mockResolvedValue({ data: {} });
+      const providerExpired = { expired: () => true, remainingMs: () => 0, kind: 'provider' };
+      const cycleFine = { expired: () => false, remainingMs: () => 60000, kind: 'cycle' };
+
+      await expect(getWithRetry('https://example.com', {}, null, [providerExpired, cycleFine]))
+        .rejects.toMatchObject({ budgetExceeded: true, budgetExceededScope: ['provider'], message: expect.stringContaining('(provider)') });
+    });
+
+    test('a cycle-only budget rejection names "cycle" and nothing else', async () => {
+      const { getWithRetry } = require('../httpClient.service');
+      axios.get.mockResolvedValue({ data: {} });
+      const providerFine = { expired: () => false, remainingMs: () => 60000, kind: 'provider' };
+      const cycleExpired = { expired: () => true, remainingMs: () => 0, kind: 'cycle' };
+
+      await expect(getWithRetry('https://example.com', {}, null, [providerFine, cycleExpired]))
+        .rejects.toMatchObject({ budgetExceeded: true, budgetExceededScope: ['cycle'], message: expect.stringContaining('(cycle)') });
+    });
+
+    test('both deadlines expired together are both recorded, never collapsed to just one', async () => {
+      const { getWithRetry } = require('../httpClient.service');
+      axios.get.mockResolvedValue({ data: {} });
+      const providerExpired = { expired: () => true, remainingMs: () => 0, kind: 'provider' };
+      const cycleExpired = { expired: () => true, remainingMs: () => 0, kind: 'cycle' };
+
+      await expect(getWithRetry('https://example.com', {}, null, [providerExpired, cycleExpired]))
+        .rejects.toMatchObject({ budgetExceededScope: ['provider', 'cycle'], message: expect.stringContaining('(provider+cycle)') });
+    });
+
+    test('classifyError still returns the plain "budget_exceeded" string regardless of scope — unchanged contract', async () => {
+      const { getWithRetry, classifyError } = require('../httpClient.service');
+      axios.get.mockResolvedValue({ data: {} });
+      const providerExpired = { expired: () => true, remainingMs: () => 0, kind: 'provider' };
+
+      try {
+        await getWithRetry('https://example.com', {}, null, [providerExpired]);
+      } catch (err) {
+        expect(classifyError(err)).toBe('budget_exceeded');
+      }
+      expect.assertions(1);
+    });
+  });
 });
 
 describe('classifyError', () => {

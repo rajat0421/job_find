@@ -17,8 +17,8 @@ jest.mock('../../models/EmailLog', () => ({
   findOne: jest.fn(),
 }));
 jest.mock('../../models/Config', () => ({ findOne: jest.fn() }));
-jest.mock('../../services/email.service', () => ({ sendJobDigestEmail: jest.fn(), sendAdminDigestCopy: jest.fn() }));
-jest.mock('../../services/config.service', () => ({ getEmailThreshold: jest.fn() }));
+jest.mock('../../services/email.service', () => ({ sendJobDigestEmail: jest.fn(), sendAdminDigestCopy: jest.fn(), isSafeHttpUrl: jest.requireActual('../../services/email.service').isSafeHttpUrl }));
+jest.mock('../../services/config.service', () => ({ getEmailThreshold: jest.fn(), getEmailFreshnessConfig: jest.fn().mockResolvedValue({ defaultMaxAgeDays: 30, adzunaMaxAgeDays: 14 }) }));
 
 const User = require('../../models/User');
 const UserJob = require('../../models/UserJob');
@@ -50,7 +50,7 @@ beforeEach(() => {
 test('matchedSkills, matchedRole and reasons from the UserJob record reach the email payload unchanged', async () => {
   const uj = {
     _id: 'uj1',
-    jobId: { title: 'Backend Engineer', status: 'active', needsMatching: false },
+    jobId: { title: 'Backend Engineer', status: 'active', needsMatching: false, postedAt: new Date(), applyLink: 'https://example.com/apply' },
     score: 88,
     matcherVersion: MATCHER_VERSION,
     userFingerprint: DUE_USER_FINGERPRINT,
@@ -75,7 +75,7 @@ test('matchedSkills, matchedRole and reasons from the UserJob record reach the e
 test('a UserJob record with no matchedSkills/reasons (legacy/malformed) still reaches sendJobDigestEmail without throwing', async () => {
   const uj = {
     _id: 'uj1',
-    jobId: { title: 'Backend Engineer', status: 'active', needsMatching: false },
+    jobId: { title: 'Backend Engineer', status: 'active', needsMatching: false, postedAt: new Date(), applyLink: 'https://example.com/apply' },
     score: 60,
     matcherVersion: MATCHER_VERSION,
     userFingerprint: DUE_USER_FINGERPRINT,

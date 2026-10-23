@@ -90,7 +90,7 @@ describe('email cron', () => {
 
   test('registering twice in the same process only calls cron.schedule once', () => {
     mockModels();
-    jest.doMock('../../services/config.service', () => ({ getEmailThreshold: jest.fn() }));
+    jest.doMock('../../services/config.service', () => ({ getEmailThreshold: jest.fn(), getEmailFreshnessConfig: jest.fn().mockResolvedValue({ defaultMaxAgeDays: 30, adzunaMaxAgeDays: 14 }) }));
     const cron = require('node-cron');
     const { startDailyEmailCron } = require('../dailyEmail.job');
 
@@ -102,7 +102,7 @@ describe('email cron', () => {
 
   test('registration still uses :20 past the hour, Asia/Kolkata — unaffected by the guard', () => {
     mockModels();
-    jest.doMock('../../services/config.service', () => ({ getEmailThreshold: jest.fn() }));
+    jest.doMock('../../services/config.service', () => ({ getEmailThreshold: jest.fn(), getEmailFreshnessConfig: jest.fn().mockResolvedValue({ defaultMaxAgeDays: 30, adzunaMaxAgeDays: 14 }) }));
     const cron = require('node-cron');
     const { startDailyEmailCron } = require('../dailyEmail.job');
 
@@ -113,7 +113,7 @@ describe('email cron', () => {
 
   test('a tick firing while the previous digest run is still in progress is skipped, not run concurrently', async () => {
     mockModels();
-    jest.doMock('../../services/config.service', () => ({ getEmailThreshold: jest.fn().mockResolvedValue(50) }));
+    jest.doMock('../../services/config.service', () => ({ getEmailThreshold: jest.fn().mockResolvedValue(50), getEmailFreshnessConfig: jest.fn().mockResolvedValue({ defaultMaxAgeDays: 30, adzunaMaxAgeDays: 14 }) }));
     jest.doMock('../../models/User', () => ({ find: jest.fn(() => new Promise(() => {})) })); // never resolves — simulates a long-running digest
     const cron = require('node-cron');
     const { startDailyEmailCron } = require('../dailyEmail.job');

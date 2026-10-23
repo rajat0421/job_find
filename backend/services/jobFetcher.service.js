@@ -20,16 +20,26 @@ const PLATFORMS = [
 ];
 
 // A source's own outcome: 'failed' only when every single request it made
-// failed (or it threw before making any, or the overall cycle budget expired
-// before it ever got to run); 'partial' when some but not all requests
-// failed, OR it completed everything it attempted but a time budget cut it
-// off before reaching its full company/category list (an incomplete run is
-// never reported as a plain 'success', even if nothing it tried actually
-// failed); 'success' otherwise.
+// failed (or it threw before making any, or its own provider/cycle budget
+// was already gone before it attempted anything — see the requestsAttempted
+// === 0 case below); 'partial' when some but not all requests failed, OR it
+// completed everything it attempted but a time budget cut it off before
+// reaching its full company/category list (an incomplete run is never
+// reported as a plain 'success', even if nothing it tried actually failed);
+// 'success' otherwise.
 const sourceOutcome = ({ requestsAttempted, requestsFailed, threw, failures, budgetExceeded, skippedEntirely }) => {
   if (threw) return 'failed';
   if (skippedEntirely) return 'failed'; // never even started — overall cycle budget was already gone
-  if (requestsAttempted === 0) return failures.length > 0 ? 'failed' : 'success';
+  if (requestsAttempted === 0) {
+    // A provider can also discover its OWN provider/cycle budget already
+    // expired on its very first company/category check (before this
+    // outer skippedEntirely flag is even relevant) and return having
+    // attempted nothing. That must never be indistinguishable from a
+    // genuinely empty company/category list — both leave failures:[] empty,
+    // but only one of them actually failed to run at all.
+    if (budgetExceeded) return 'failed';
+    return failures.length > 0 ? 'failed' : 'success';
+  }
   if (requestsFailed >= requestsAttempted) return 'failed';
   if (requestsFailed > 0 || budgetExceeded) return 'partial';
   return 'success';
